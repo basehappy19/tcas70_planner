@@ -1,0 +1,113 @@
+'use server'
+
+import prisma from "@/lib/prisma";
+
+function getThaiNow() {
+    return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+}
+
+const getStartOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+async function getActiveSession() {
+    const now = getThaiNow();
+    return await prisma.studyLog.findFirst({
+        where: {
+            status: "STUDYING",
+            date: { gte: getStartOfDay(now) },
+        },
+        orderBy: { id: "desc" },
+    });
+}
+
+export async function createStudySession({ scheduleId }: { scheduleId: number }) {
+    try {
+        const schedule = await prisma.schedule.findUnique({
+            where: { id: scheduleId },
+        });
+
+        if (!schedule) return { success: false, message: "ไม่พบตารางเรียน" };
+
+        const now = getThaiNow();
+        const [startHour, startMinute] = schedule.startTime.split(":").map(Number);
+        
+        const scheduledTime = new Date(
+            now.getFullYear(), now.getMonth(), now.getDate(),
+            startHour, startMinute, 0
+        );
+
+        // Server คำนวณความสายเอง
+        const diffMs = now.getTime() - scheduledTime.getTime();
+        const delayMinutes = Math.max(0, Math.floor(diffMs / 60000));
+
+        // Create ลง DB ทันที
+        const newSession = await prisma.studyLog.create({
+            data: {
+                scheduleId: schedule.id,
+                delayMinutes: delayMinutes,
+                status: "STUDYING",
+                actualStartAt: now,
+                date: getStartOfDay(now),
+            },
+        });
+
+        // หากสาย ให้บันทึก Log การเข้าสายอัตโนมัติจากฝั่ง Server เลย
+        if (delayMinutes > 0) {
+            await prisma.studyActionLog.create({
+                data: {
+                    studyLogId: newSession.id,
+                    action: "START_LATE",
+                    note: `ระบบตรวจพบว่าเข้าสาย ${delayMinutes} นาที`,
+                }
+            });
+        } else {
+            await prisma.studyActionLog.create({
+                data: {
+                    studyLogId: newSession.id,
+                    action: "START_ON_TIME",
+                }
+            });
+        }
+
+        return { 
+            success: true, 
+            delayMinutes, 
+            message: delayMinutes > 0 ? `สายไป ${delayMinutes} นาที` : "เข้าเรียนตรงเวลา" 
+        };
+    } catch (error) {
+        console.error(error);
+        return { success: false, message: "เกิดข้อผิดพลาดบนเซิร์ฟเวอร์" };
+    }
+}
+
+export async function addActionLogToDB(action: string, note?: string) {
+    try {
+        const activeSession = await getActiveSession();
+        if (!activeSession) return { success: false, message: "ไม่พบเซสชันที่กำลังดำเนินอยู่" };
+
+        await prisma.studyActionLog.create({
+            data: {
+                studyLogId: activeSession.id,
+                action,
+                note,
+            },
+        });
+        return { success: true };
+    } catch (e) {
+        return { success: false };
+    }
+}
+
+export async function finishStudySession() {
+    try {
+        const activeSession = await getActiveSession();
+        if (!activeSession) return { success: false };
+
+        await prisma.studyLog.update({
+            where: { id: activeSession.id },
+            data: { status: "COMPLETED" },
+        });
+        return { success: true };
+    } catch (e) {
+        return { success: false };
+    }
+}
