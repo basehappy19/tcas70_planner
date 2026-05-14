@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { addResource, deleteResource } from '../actions/resource'
 import Image from 'next/image'
 
+
 interface Subject {
     id: number
     name: string
@@ -165,6 +166,36 @@ export default function ResourceClient({
     const [filterSubject, setFilterSubject] = useState<string>('all')
     const [filterType, setFilterType] = useState<string>('all')
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const [form, setForm] = useState({
+        subjectId: '',
+        title: '',
+        type: '',
+        url: '',
+        content: '',
+    })
+
+    const [errors, setErrors] = useState({
+        subjectId: false,
+        title: false,
+        type: false,
+    })
+
+    const validateForm = () => {
+        const newErrors = {
+            subjectId: !form.subjectId,
+            title: !form.title.trim(),
+            type: !form.type,
+        }
+
+        setErrors(newErrors)
+
+        return !Object.values(newErrors).some(Boolean)
+    }
+
+    const isFormValid =
+        form.subjectId &&
+        form.title.trim() &&
+        form.type
 
     const filteredResources = resources.filter((res) => {
         const matchSubject =
@@ -358,7 +389,24 @@ export default function ResourceClient({
 
                         <form
                             action={async (formData) => {
+                                if (!validateForm()) return
+
                                 await addResource(formData)
+
+                                setForm({
+                                    subjectId: '',
+                                    title: '',
+                                    type: '',
+                                    url: '',
+                                    content: '',
+                                })
+
+                                setErrors({
+                                    subjectId: false,
+                                    title: false,
+                                    type: false,
+                                })
+
                                 setIsModalOpen(false)
                             }}
                             className="space-y-4"
@@ -370,7 +418,24 @@ export default function ResourceClient({
 
                                 <select
                                     name="subjectId"
-                                    className="cursor-pointer w-full bg-[#1a1a1a] border border-white/10 rounded-xl p-3 focus:outline-none focus:ring-2 ring-blue-500"
+                                    value={form.subjectId}
+                                    onChange={(e) => {
+                                        setForm({
+                                            ...form,
+                                            subjectId: e.target.value,
+                                        })
+
+                                        if (e.target.value) {
+                                            setErrors({
+                                                ...errors,
+                                                subjectId: false,
+                                            })
+                                        }
+                                    }}
+                                    className={`cursor-pointer w-full bg-[#1a1a1a] border rounded-xl p-3 focus:outline-none focus:ring-2 ring-blue-500 ${errors.subjectId
+                                        ? 'border-red-500'
+                                        : 'border-white/10'
+                                        }`}
                                 >
                                     <option value="">
                                         -- เลือกรายวิชา --
@@ -385,6 +450,11 @@ export default function ResourceClient({
                                         </option>
                                     ))}
                                 </select>
+                                {errors.subjectId && (
+                                    <p className="text-red-500 text-xs mt-1">
+                                        กรุณาเลือกรายวิชา
+                                    </p>
+                                )}
                             </div>
 
                             <div>
@@ -394,10 +464,31 @@ export default function ResourceClient({
 
                                 <input
                                     name="title"
-                                    required
-                                    className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl p-3"
+                                    value={form.title}
+                                    onChange={(e) => {
+                                        setForm({
+                                            ...form,
+                                            title: e.target.value,
+                                        })
+
+                                        if (e.target.value.trim()) {
+                                            setErrors({
+                                                ...errors,
+                                                title: false,
+                                            })
+                                        }
+                                    }}
+                                    className={`w-full bg-[#1a1a1a] border rounded-xl p-3 ${errors.title
+                                        ? 'border-red-500'
+                                        : 'border-white/10'
+                                        }`}
                                     placeholder="เช่น สรุปฟิสิกส์นิวเคลียร์"
                                 />
+                                {errors.title && (
+                                    <p className="text-red-500 text-xs mt-1">
+                                        กรุณากรอกหัวข้อ
+                                    </p>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -408,7 +499,24 @@ export default function ResourceClient({
 
                                     <select
                                         name="type"
-                                        className="cursor-pointer w-full bg-[#1a1a1a] border border-white/10 rounded-xl p-3"
+                                        value={form.type}
+                                        onChange={(e) => {
+                                            setForm({
+                                                ...form,
+                                                type: e.target.value,
+                                            })
+
+                                            if (e.target.value) {
+                                                setErrors({
+                                                    ...errors,
+                                                    type: false,
+                                                })
+                                            }
+                                        }}
+                                        className={`cursor-pointer w-full bg-[#1a1a1a] border rounded-xl p-3 ${errors.type
+                                            ? 'border-red-500'
+                                            : 'border-white/10'
+                                            }`}
                                     >
                                         <option value="">-- เลือกประเภท --</option>
                                         <option value="VIDEO">
@@ -427,6 +535,11 @@ export default function ResourceClient({
                                             🔗 ลิงก์ภายนอก
                                         </option>
                                     </select>
+                                    {errors.type && (
+                                        <p className="text-red-500 text-xs mt-1">
+                                            กรุณาเลือกประเภท
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div>
@@ -468,7 +581,11 @@ export default function ResourceClient({
 
                                 <button
                                     type="submit"
-                                    className="cursor-pointer flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold transition-colors"
+                                    disabled={!isFormValid}
+                                    className={`flex-1 px-4 py-3 rounded-xl font-bold transition-colors ${isFormValid
+                                            ? 'cursor-pointer bg-blue-600 hover:bg-blue-500'
+                                            : 'cursor-not-allowed bg-neutral-700 text-neutral-400'
+                                        }`}
                                 >
                                     บันทึก
                                 </button>
