@@ -42,7 +42,7 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem, is
     const [isCurrentTimeSlot, setIsCurrentTimeSlot] = useState(false);
     const [historyData, setHistoryData] = useState<StudyLogWithActions[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
-    
+
     const [formData, setFormData] = useState({
         title: item.title,
         startTime: item.startTime,
@@ -106,12 +106,12 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem, is
 
     return (
         <>
-            <div 
+            <div
                 className={`group relative p-4 rounded-2xl transition-all shadow-lg 
-                    ${isCurrentTimeSlot 
-                        ? 'bg-emerald-900/40 border-2 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.3)] scale-[1.02]' 
-                        : isToday 
-                            ? 'bg-[#1e1e1e] border-2 border-neutral-700 hover:border-emerald-500/50' 
+                    ${isCurrentTimeSlot
+                        ? 'bg-emerald-900/40 border-2 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.3)] scale-[1.02]'
+                        : isToday
+                            ? 'bg-[#1e1e1e] border-2 border-neutral-700 hover:border-emerald-500/50'
                             : 'bg-[#1e1e1e] border border-gray-800 opacity-70 hover:opacity-100'
                     }
                 `}
@@ -126,15 +126,15 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem, is
                     {formatTo12Hour(item.startTime)} - {formatTo12Hour(item.endTime)}
                 </div>
                 <div className="text-sm font-bold text-gray-200 line-clamp-2 leading-snug">{item.title}</div>
-                
+
                 <div className="mt-3 flex gap-2">
-                    <button 
+                    <button
                         onClick={handleOpenHistory}
                         className="flex-1 bg-white/5 hover:bg-white/10 text-xs text-gray-300 py-1.5 rounded-lg font-medium transition-colors border border-white/5 cursor-pointer"
                     >
                         ดูประวัติ
                     </button>
-                    <button 
+                    <button
                         onClick={() => setIsEditing(true)}
                         className="px-3 bg-white/5 hover:bg-white/10 text-xs text-gray-300 py-1.5 rounded-lg transition-colors border border-white/5 cursor-pointer"
                         title="แก้ไข"
@@ -149,34 +149,34 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem, is
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-100 p-4 font-sans">
                     <div className="bg-[#222] border border-gray-700 w-full max-w-md rounded-3xl p-8 shadow-2xl">
                         <h2 className="text-xl font-bold mb-6 text-white">แก้ไขตารางเรียน</h2>
-                        
+
                         <div className="space-y-4">
                             <div>
                                 <label className="text-xs text-gray-500 uppercase font-bold">ชื่อวิชา / ภารกิจ</label>
-                                <input 
+                                <input
                                     type="text"
                                     value={formData.title}
-                                    onChange={(e) => setFormData({...formData, title: e.target.value})}
+                                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                                     className="w-full bg-black text-white border border-gray-800 rounded-xl p-3 mt-1 focus:border-emerald-500 outline-none"
                                 />
                             </div>
-                            
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs text-gray-500 uppercase font-bold">เวลาเริ่ม</label>
-                                    <input 
+                                    <input
                                         type="time"
                                         value={formData.startTime}
-                                        onChange={(e) => setFormData({...formData, startTime: e.target.value})}
+                                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
                                         className="w-full bg-black text-white border border-gray-800 rounded-xl p-3 mt-1 focus:border-emerald-500 outline-none scheme-dark"
                                     />
                                 </div>
                                 <div>
                                     <label className="text-xs text-gray-500 uppercase font-bold">เวลาจบ</label>
-                                    <input 
+                                    <input
                                         type="time"
                                         value={formData.endTime}
-                                        onChange={(e) => setFormData({...formData, endTime: e.target.value})}
+                                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
                                         className="w-full bg-black text-white border border-gray-800 rounded-xl p-3 mt-1 focus:border-emerald-500 outline-none scheme-dark"
                                     />
                                 </div>
@@ -184,7 +184,14 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem, is
                         </div>
 
                         <div className="flex gap-3 mt-8">
-                            <button onClick={() => setIsEditing(false)} className="flex-1 py-3 text-gray-500 hover:text-white transition-colors font-bold cursor-pointer">ยกเลิก</button>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setIsEditing(false)}
+                                className="cursor-pointer flex-1 py-3 rounded-xl border border-white/10 hover:bg-white/5 transition-colors"
+                            >
+                                ยกเลิก
+                            </button>
                             <button onClick={handleUpdate} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-3 rounded-xl font-bold text-white transition-colors shadow-lg shadow-emerald-500/20 cursor-pointer">บันทึกข้อมูล</button>
                         </div>
                     </div>
@@ -214,14 +221,13 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem, is
                                                     {dayjs(log.date).format('D MMMM BBBB')}
                                                 </div>
                                                 <div className="text-[10px] text-gray-500 mt-1">
-                                                    เริ่มจริง: {log.actualStartAt ? dayjs(log.actualStartAt).format('HH:mm น.') : '-'} 
+                                                    เริ่มจริง: {log.actualStartAt ? dayjs(log.actualStartAt).format('HH:mm น.') : '-'}
                                                     {log.delayMinutes > 0 && <span className="text-red-400 ml-2">(ช้าไป {log.delayMinutes} นาที)</span>}
                                                 </div>
                                             </div>
-                                            <span className={`text-[10px] px-2 py-1 rounded-md font-bold ${
-                                                log.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 
-                                                log.status === 'MISSED' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
-                                            }`}>
+                                            <span className={`text-[10px] px-2 py-1 rounded-md font-bold ${log.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' :
+                                                    log.status === 'MISSED' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'
+                                                }`}>
                                                 {log.status}
                                             </span>
                                         </div>
