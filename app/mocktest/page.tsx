@@ -6,16 +6,13 @@ export default async function MockTestPage() {
         orderBy: { name: 'asc' }
     });
 
-    // 2. ดึงประวัติการสอบทั้งหมด พร้อมข้อมูลรายวิชา
     const history = await prisma.mockTest.findMany({
         include: { 
-            // Prisma มักจะแปลงชื่อ Relation เป็นตัวเล็ก
             subject: true 
         },
         orderBy: { testDate: 'desc' }
     });
 
-    // 3. คำนวณสถิติ MIN, MAX, AVG แยกตามวิชา
     const rawStats = await prisma.mockTest.groupBy({
         by: ['subjectId'],
         _min: { score: true },
@@ -24,7 +21,6 @@ export default async function MockTestPage() {
         _count: { id: true }
     });
 
-    // นำสถิติมาประกอบกับชื่อวิชาและคะแนนเต็ม
     const stats = rawStats.map(stat => {
         const subjectData = subjects.find(s => s.id === stat.subjectId);
         return {
@@ -42,7 +38,7 @@ export default async function MockTestPage() {
         <div className="min-h-screen bg-[#0a0a0a] p-4 md:p-8 text-white font-sans">
             <div className="max-w-5xl mx-auto">
                 <header className="mb-10">
-                    <h1 className="text-4xl font-black mb-2 tracking-tight">ระบบจำลองสอบ (Mock Test)</h1>
+                    <h1 className="text-4xl font-black mb-2 tracking-tight">ระบบจำลองสอบ</h1>
                     <p className="text-neutral-400">บันทึกคะแนน วิเคราะห์จุดอ่อน และดูสถิติการพัฒนาของตัวเอง</p>
                 </header>
 

@@ -71,7 +71,6 @@ export default function HeroSection({
         }
     };
 
-    // 🌟 UI: โหมด Standby (ไม่มีตารางเรียน)
     if (!title || !id) {
         return (
             <div className="flex flex-col items-center justify-center py-12 min-h-[50vh]">

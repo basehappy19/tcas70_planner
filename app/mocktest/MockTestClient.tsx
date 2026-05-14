@@ -67,7 +67,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
             interval = setInterval(() => {
                 setTimeLeft((prev) => {
                     if (prev <= 1) {
-                        setPhase("scoring"); // เวลาหมด เด้งไปหน้ากรอกคะแนนอัตโนมัติ
+                        setPhase("scoring"); 
                         return 0;
                     }
                     return prev - 1;
@@ -129,12 +129,10 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            {/* คอลัมน์ซ้าย: ระบบจับเวลา และ ฟอร์ม */}
             <div className="lg:col-span-1 space-y-8">
                 
                 <div className="bg-[#1e1e1e] p-6 rounded-3xl border border-neutral-800 shadow-xl overflow-hidden relative">
                     
-                    {/* Phase 1: Setup */}
                     {phase === "setup" && (
                         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
@@ -189,20 +187,18 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                     disabled={!selectedSubjectId}
                                     className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-neutral-800 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 mt-4 cursor-pointer"
                                 >
-                                    เริ่มจับเวลา ⏱️
+                                    เริ่มจับเวลา
                                 </button>
                             </div>
                         </div>
                     )}
 
-                    {/* Phase 2: Running / Paused */}
                     {(phase === "running" || phase === "paused") && (
                         <div className="animate-in fade-in zoom-in-95 duration-300 flex flex-col items-center justify-center py-4 text-center">
                             <span className="text-emerald-400 text-sm font-bold bg-emerald-500/10 px-3 py-1 rounded-full mb-4">
                                 {currentSubject?.name}
                             </span>
                             
-                            {/* วงแหวนและตัวเลขจับเวลา */}
                             <div className="relative w-48 h-48 flex items-center justify-center mb-8">
                                 <div className={`absolute inset-0 border-4 rounded-full ${phase === 'paused' ? 'border-yellow-500/30' : timeLeft < 300 ? 'border-red-500/50 animate-pulse' : 'border-emerald-500/30'}`}></div>
                                 <div className={`text-5xl font-black tabular-nums tracking-tighter ${phase === 'paused' ? 'text-yellow-400' : timeLeft < 300 ? 'text-red-400' : 'text-white'}`}>
@@ -210,7 +206,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                 </div>
                                 {phase === "paused" && (
                                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-5xl font-black text-black/50 backdrop-blur-sm w-full h-full flex items-center justify-center rounded-full">
-                                        PAUSED
+                                        หยุด
                                     </div>
                                 )}
                             </div>
@@ -221,21 +217,21 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                         onClick={() => setPhase("paused")}
                                         className="flex-1 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 border border-yellow-500/50 font-bold py-3 rounded-xl transition-colors cursor-pointer"
                                     >
-                                        พักเบรก ⏸️
+                                        พักเบรก
                                     </button>
                                 ) : (
                                     <button 
                                         onClick={() => setPhase("running")}
                                         className="flex-1 bg-emerald-600 text-white hover:bg-emerald-500 font-bold py-3 rounded-xl transition-colors shadow-lg shadow-emerald-500/20 cursor-pointer"
                                     >
-                                        ทำต่อ ▶️
+                                        ทำต่อ
                                     </button>
                                 )}
                                 <button 
                                     onClick={() => setPhase("scoring")}
                                     className="flex-1 bg-neutral-800 text-white hover:bg-red-500/80 font-bold py-3 rounded-xl transition-colors cursor-pointer"
                                 >
-                                    ส่งข้อสอบ ⏹️
+                                    ส่งข้อสอบ
                                 </button>
                             </div>
                         </div>
@@ -245,7 +241,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                     {phase === "scoring" && (
                         <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                             <div className="text-center mb-6">
-                                <h2 className="text-2xl font-black text-emerald-400 mb-1">หมดเวลาสอบ! 🎉</h2>
+                                <h2 className="text-2xl font-black text-emerald-400 mb-1">หมดเวลาสอบ!</h2>
                                 <p className="text-neutral-400 text-sm">
                                     ใช้เวลาไป {Math.ceil(timeSpent / 60)} นาที
                                 </p>
@@ -281,7 +277,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                         value={notes}
                                         onChange={(e) => setNotes(e.target.value)}
                                         className="w-full bg-black text-white border border-gray-800 rounded-xl p-3 mt-1 focus:border-emerald-500 outline-none resize-none"
-                                        placeholder="ทำไม่ทัน 5 ข้อสุดท้าย..."
+                                        placeholder=""
                                     ></textarea>
                                 </div>
 
@@ -296,7 +292,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                     <button 
                                         type="submit" 
                                         disabled={isSubmitting}
-                                        className="flex-[2] bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
+                                        className="flex-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
                                     >
                                         {isSubmitting ? "กำลังบันทึก..." : "บันทึกผลสอบ"}
                                     </button>
@@ -312,7 +308,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                         <span>📊</span> สถิติรายวิชา
                     </h2>
                     
-                    <div className="space-y-3 max-h-[300px] overflow-y-auto scrollbar-hide pr-1">
+                    <div className="space-y-3 max-h-75 overflow-y-auto scrollbar-hide pr-1">
                         {stats.length > 0 ? (
                             stats.map(stat => (
                                 <div key={stat.subjectId} className="bg-black/50 p-4 rounded-2xl border border-neutral-800">
