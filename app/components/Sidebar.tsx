@@ -8,7 +8,7 @@ export default function Sidebar() {
     const menuItems = [
         { name: "หน้าหลัก", icon: "🏡", path: "/" },
         { name: "ตารางติว", icon: "📅", path: "/schedule" },
-        { name: "ห้องติว", icon: "📝", path: "/study" },
+        { name: "ห้องติว", icon: "📝", path: "/resources" },
         { name: "ลองสอบ", icon: "⏱️", path: "/mocktest" },
     ];
 

@@ -54,6 +54,7 @@ model Subject {
   name        String     @unique
   fullScore   Float      
   mockTests   MockTest[]
+  resources   Resource[]
 }
 
 model MockTest {
@@ -66,4 +67,23 @@ model MockTest {
   timeSpent   Int    
   testDate    DateTime @default(now())
   notes       String?  @db.Text
+}
+
+model Resource {
+  id        Int      @id @default(autoincrement())
+  subjectId Int
+  title     String
+  type      ResourceType
+  url       String?  
+  content   String? 
+  createdAt DateTime @default(now())
+
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+}
+
+enum ResourceType {
+  VIDEO
+  DOCUMENT
+  LINK
+  NOTE
 }
