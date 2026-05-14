@@ -216,11 +216,10 @@ export default function ResourceClient({
 
     return (
         <section className="space-y-6">
-            {/* Toolbar: Search & Filter */}
             <div className="flex flex-wrap gap-4 items-center justify-between bg-[#111] p-4 rounded-2xl border border-white/5">
                 <div className="flex gap-3 overflow-x-auto pb-2 md:pb-0">
                     <select
-                        className="bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ring-blue-500"
+                        className="cursor-pointer bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ring-blue-500"
                         onChange={(e) =>
                             setFilterSubject(e.target.value)
                         }
@@ -235,7 +234,7 @@ export default function ResourceClient({
                     </select>
 
                     <select
-                        className="bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ring-blue-500"
+                        className="cursor-pointer bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ring-blue-500"
                         onChange={(e) =>
                             setFilterType(e.target.value)
                         }

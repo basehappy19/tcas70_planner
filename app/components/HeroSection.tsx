@@ -1,12 +1,14 @@
 'use client'
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 import isBetween from "dayjs/plugin/isBetween";
 import { addActionLogToDB, createStudySession, finishStudySession } from "@/app/actions/study";
+import { uploadImageToDrive } from "@/app/actions/drive";
 import buddhistEra from 'dayjs/plugin/buddhistEra';
 import 'dayjs/locale/th';
+import Image from "next/image";
 
 dayjs.extend(buddhistEra);
 dayjs.locale('th');
@@ -63,6 +65,12 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
     const [selectedDay, setSelectedDay] = useState<number>(dayjs().day());
     const [noteError, setNoteError] = useState(false);
 
+    // 🌟 เปลี่ยน State เป็น Array เพื่อเก็บหลายไฟล์
+    const [imageFiles, setImageFiles] = useState<File[]>([]);
+    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
     const getCurrentSchedule = useCallback((dow: number, mins: number) => {
         return allSchedules.find(s =>
             s.dayOfWeek === dow &&
@@ -76,7 +84,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
             .filter(s => s.dayOfWeek === dow && timeToMinutes(s.endTime) < mins)
             .sort((a, b) => timeToMinutes(b.endTime) - timeToMinutes(a.endTime))[0];
         if (todayPrev) return todayPrev;
-        // look back through days
         for (let i = 1; i <= 7; i++) {
             const d = ((dow - i) + 7) % 7;
             const last = allSchedules
@@ -121,7 +128,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                 ) {
                     return current;
                 }
-
                 return getCurrentSchedule(dow, mins);
             });
 
@@ -134,8 +140,43 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
         return () => clearInterval(timer);
     }, [currentSchedule, getCurrentSchedule, status]);
 
+    const getTimeUntilNextSchedule = () => {
+        if (!nextSchedule) return null;
+
+        const now = dayjs();
+
+        let target = dayjs()
+            .day(nextSchedule.dayOfWeek)
+            .hour(Number(nextSchedule.startTime.split(":")[0]))
+            .minute(Number(nextSchedule.startTime.split(":")[1]))
+            .second(0);
+
+        if (nextSchedule._offsetDays) {
+            target = target.add(nextSchedule._offsetDays, "day");
+        }
+
+        const diffSeconds = target.diff(now, "second");
+
+        if (diffSeconds <= 0) return "กำลังจะเริ่ม";
+
+        const hours = Math.floor(diffSeconds / 3600);
+        const minutes = Math.floor((diffSeconds % 3600) / 60);
+        const seconds = diffSeconds % 60;
+
+        if (hours > 0) {
+            return `อีก ${hours} ชม. ${minutes} นาที ${seconds} วิ`;
+        }
+
+        if (minutes > 0) {
+            return `อีก ${minutes} นาที ${seconds} วิ`;
+        }
+
+        return `อีก ${seconds} วิ`;
+    };
+
     const prevSchedule = getPrevSchedule(nowDow, nowMinutes);
     const nextSchedule = getNextSchedule(nowDow, nowMinutes) as (Schedule & { _offsetDays?: number }) | null;
+    const nextScheduleCountdown = getTimeUntilNextSchedule();
     const daySchedules = allSchedules.filter(s => s.dayOfWeek === selectedDay).sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
     const handleStartStudy = async () => {
@@ -148,11 +189,8 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
 
     const handleEndSession = async () => {
         setIsSaving(true);
-
         await addActionLogToDB("END_SESSION");
-
         const res = await finishStudySession();
-
         setIsSaving(false);
 
         if (res.success) {
@@ -161,9 +199,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
             const mins = timeToMinutes(now.format("HH:mm"));
 
             setStatus("IDLE");
-
             setCurrentSchedule(getCurrentSchedule(dow, mins));
-
             setNowDow(dow);
             setNowMinutes(mins);
         }
@@ -175,10 +211,39 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
         return DAY_FULL_TH[dow];
     };
 
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length > 0) {
+            setImageFiles(prev => [...prev, ...files]);
+            const newPreviews = files.map(file => URL.createObjectURL(file));
+            setImagePreviews(prev => [...prev, ...newPreviews]);
+        }
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
+    const handleRemoveImage = (indexToRemove: number) => {
+        setImageFiles(prev => prev.filter((_, index) => index !== indexToRemove));
+        setImagePreviews(prev => {
+            const newPreviews = prev.filter((_, index) => index !== indexToRemove);
+            URL.revokeObjectURL(prev[indexToRemove]);
+            return newPreviews;
+        });
+    };
+
+    const resetNoteModal = () => {
+        setNoteText("");
+        setNoteError(false);
+        setImageFiles([]);
+        imagePreviews.forEach(URL.revokeObjectURL); // ล้างหน่วยความจำรูปพรีวิวทั้งหมด
+        setImagePreviews([]);
+        setShowNoteModal(false);
+    };
+
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-white px-4 py-8 font-sans">
             <div className="max-w-6xl mx-auto space-y-5">
 
+                {/* ── Header ── */}
                 <div className="flex items-center justify-between mb-2">
                     <div>
                         <p className="text-xs text-neutral-500 uppercase tracking-widest mb-0.5">TCAS 70 Planner</p>
@@ -195,6 +260,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                     <div className={`w-3 h-3 rounded-full ${status === "STUDYING" ? "bg-emerald-400 animate-pulse" : status === "PAUSED" ? "bg-amber-400 animate-pulse" : "bg-neutral-700"}`} />
                 </div>
 
+                {/* ── Current Schedule Card ── */}
                 {currentSchedule ? (
                     <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6 relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-0.5 bg-linear-to-r from-emerald-500 via-emerald-400 to-transparent" />
@@ -275,7 +341,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
 
                 {/* ── Prev / Next strip ── */}
                 <div className="grid grid-cols-2 gap-3">
-                    {/* Previous */}
                     <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4">
                         <p className="text-xs text-neutral-500 mb-2 font-medium">◂ ก่อนหน้า</p>
                         {prevSchedule ? (
@@ -292,18 +357,26 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                             <p className="text-xs text-neutral-600">ไม่มีข้อมูล</p>
                         )}
                     </div>
-                    {/* Next */}
                     <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4">
                         <p className="text-xs text-neutral-500 mb-2 font-medium">ถัดไป ▸</p>
                         {nextSchedule ? (
                             <>
                                 <p className="text-sm font-bold text-neutral-200 leading-tight">{nextSchedule.title}</p>
-                                <p className="text-xs text-neutral-500 mt-1 font-mono">
-                                    {nextSchedule._offsetDays
-                                        ? `${todayLabel((nowDow + (nextSchedule._offsetDays ?? 0)) % 7)} `
-                                        : ""
-                                    }{formatTo12Hour(nextSchedule.startTime)}–{formatTo12Hour(nextSchedule.endTime)}
-                                </p>
+                                <div className="mt-1 space-y-1">
+                                    <p className="text-xs text-neutral-500 font-mono">
+                                        {nextSchedule._offsetDays
+                                            ? `${todayLabel((nowDow + (nextSchedule._offsetDays ?? 0)) % 7)} `
+                                            : ""
+                                        }
+                                        {formatTo12Hour(nextSchedule.startTime)}–{formatTo12Hour(nextSchedule.endTime)}
+                                    </p>
+
+                                    {nextScheduleCountdown && (
+                                        <p className="text-[11px] text-emerald-400 font-semibold">
+                                            {nextScheduleCountdown}
+                                        </p>
+                                    )}
+                                </div>
                                 <span className={`mt-2 inline-block text-xs px-2 py-0.5 rounded-full font-medium ${getTypeColor(nextSchedule.type).bg} ${getTypeColor(nextSchedule.type).text}`}>
                                     {nextSchedule.type}
                                 </span>
@@ -316,7 +389,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
 
                 {/* ── Weekly calendar ── */}
                 <div className="rounded-2xl border border-neutral-800 bg-neutral-900 overflow-hidden">
-                    {/* Day tabs */}
                     <div className="grid grid-cols-7 border-b border-neutral-800">
                         {WEEK_ORDER.map(d => {
                             const hasClass = allSchedules.some(s => s.dayOfWeek === d);
@@ -342,13 +414,11 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                         })}
                     </div>
 
-                    {/* Day label */}
                     <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                         <p className="text-sm font-semibold text-neutral-300">{todayLabel(selectedDay)}</p>
                         <p className="text-xs text-neutral-500">{daySchedules.length} คาบ</p>
                     </div>
 
-                    {/* Schedule list */}
                     <div className="px-4 pb-4 space-y-2">
                         {daySchedules.length === 0 ? (
                             <div className="text-center py-6">
@@ -398,6 +468,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                 </div>
             </div>
 
+            {/* ── Note Modal ── */}
             {showNoteModal && (
                 <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4">
                     <div className="bg-neutral-900 border border-neutral-700 p-5 rounded-2xl w-full max-w-md shadow-2xl">
@@ -410,52 +481,104 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                                 if (noteError) setNoteError(false);
                             }}
                             placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
-                            className={`w-full h-36 bg-neutral-950 text-white text-sm p-3.5 rounded-xl border outline-none resize-none placeholder:text-neutral-600 transition-colors ${noteError
+                            className={`w-full h-32 bg-neutral-950 text-white text-sm p-3.5 rounded-xl border outline-none resize-none placeholder:text-neutral-600 transition-colors ${noteError
                                 ? "border-rose-500 focus:border-rose-400"
                                 : "border-neutral-800 focus:border-blue-500"
                                 }`}
                             autoFocus
                         />
 
+                        {imagePreviews.length > 0 && (
+                            <div className="flex flex-wrap gap-3 mt-3 max-h-40 overflow-y-auto">
+                                {imagePreviews.map((preview, index) => (
+                                    <div key={index} className="relative w-fit">
+                                        <Image width={96} height={96} src={preview} alt={`Preview ${index}`} className="h-24 w-auto rounded-lg border border-neutral-700 object-cover" />
+                                        <button
+                                            onClick={() => handleRemoveImage(index)}
+                                            className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md cursor-pointer hover:bg-rose-400 transition-colors"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="mt-3 flex items-center">
+                            {/* 🌟 เพิ่มคุณสมบัติ multiple ให้รับหลายไฟล์ได้ */}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                className="hidden"
+                                ref={fileInputRef}
+                                onChange={handleImageChange}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="text-xs flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors bg-neutral-800 px-3 py-1.5 rounded-lg cursor-pointer"
+                            >
+                                📷 <span>แนบรูปภาพ</span>
+                            </button>
+                            {imageFiles.length > 0 && (
+                                <span className="ml-3 text-xs text-neutral-500">{imageFiles.length} รูป</span>
+                            )}
+                        </div>
+
                         {noteError && (
                             <p className="text-rose-400 text-xs mt-2 font-medium">
-                                ⚠️ กรุณากรอกข้อความก่อนกดบันทึก
+                                ⚠️ กรุณากรอกข้อความหรือแนบรูปภาพก่อนกดบันทึก
                             </p>
                         )}
 
-                        <div className="flex gap-2 mt-3">
+                        <div className="flex gap-2 mt-4">
                             <button
                                 type="button"
-                                onClick={() => {
-                                    setNoteText("");
-                                    setNoteError(false);
-                                    setShowNoteModal(false);
-                                }}
-                                className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm border border-white/10 hover:bg-white/5 transition-colors"
+                                onClick={resetNoteModal}
+                                disabled={isUploading}
+                                className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm border border-white/10 hover:bg-white/5 transition-colors disabled:opacity-50"
                             >
                                 ยกเลิก
                             </button>
                             <button
-                                onClick={() => {
-                                    if (!noteText.trim()) {
+                                onClick={async () => {
+                                    if (!noteText.trim() && imageFiles.length === 0) {
                                         setNoteError(true);
                                         return;
                                     }
 
-                                    addActionLogToDB("TAKE_NOTE", noteText);
-                                    setNoteText("");
-                                    setNoteError(false);
-                                    setShowNoteModal(false);
+                                    setIsUploading(true);
+                                    let uploadedUrls: string[] = [];
+
+                                    // 🌟 อัปโหลดรูปทั้งหมดพร้อมกัน (Concurrent upload)
+                                    if (imageFiles.length > 0) {
+                                        const uploadPromises = imageFiles.map(async (file) => {
+                                            const formData = new FormData();
+                                            formData.append("file", file);
+                                            const uploadRes = await uploadImageToDrive(formData);
+                                            return uploadRes.success ? uploadRes.url : null;
+                                        });
+
+                                        const results = await Promise.all(uploadPromises);
+                                        // กรองเฉพาะ URL ที่อัปโหลดสำเร็จ (เอาค่า null ออก)
+                                        uploadedUrls = results.filter((url): url is string => url !== null);
+                                    }
+
+                                    await addActionLogToDB("TAKE_NOTE", noteText, uploadedUrls);
+
+                                    setIsUploading(false);
+                                    resetNoteModal();
                                 }}
-                                className="cursor-pointer flex-1 bg-blue-600 py-2.5 rounded-xl text-sm font-bold text-white hover:bg-blue-500 active:scale-[0.98] transition-all"
+                                disabled={isUploading}
+                                className="cursor-pointer flex-1 bg-blue-600 py-2.5 rounded-xl text-sm font-bold text-white hover:bg-blue-500 active:scale-[0.98] transition-all disabled:opacity-50 disabled:bg-blue-800"
                             >
-                                บันทึก
+                                {isUploading ? `กำลังอัปโหลด ${imageFiles.length} รูป...` : "บันทึก"}
                             </button>
                         </div>
                     </div>
                 </div>
             )}
-
         </div>
     );
 }

@@ -76,7 +76,12 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
     }
 }
 
-export async function addActionLogToDB(action: StudyActionType, note?: string) {
+// 🌟 อัปเดตฟังก์ชันนี้ให้รับ imageUrls เป็น Array ของ String
+export async function addActionLogToDB(
+    action: StudyActionType, 
+    note?: string,
+    imageUrls?: string[] // รับ array ของรูปภาพ (อาจจะไม่มีก็ได้)
+) {
     try {
         const activeSession = await getActiveSession();
         if (!activeSession) return { success: false, message: "ไม่พบเซสชันที่กำลังดำเนินอยู่" };
@@ -86,10 +91,18 @@ export async function addActionLogToDB(action: StudyActionType, note?: string) {
                 studyLogId: activeSession.id,
                 action,
                 note,
+                // 🌟 เพิ่มคำสั่ง create สำหรับ Relation ไปที่ตารางรูปภาพ
+                images: imageUrls && imageUrls.length > 0 ? {
+                    create: imageUrls.map(url => ({
+                        url: url
+                    }))
+                } : undefined,
             },
         });
+        
         return { success: true };
     } catch (e) {
+        console.error("Error in addActionLogToDB:", e);
         return { success: false };
     }
 }
@@ -105,6 +118,7 @@ export async function finishStudySession() {
         });
         return { success: true };
     } catch (e) {
+        console.error("Error in finishStudySession:", e);
         return { success: false };
     }
 }

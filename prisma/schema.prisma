@@ -47,6 +47,16 @@ model StudyActionLog {
   action      StudyActionType 
   
   note        String?         @db.Text
+  images      NoteImage[]
+}
+
+model NoteImage {
+  id          Int       @id @default(autoincrement())
+  url         String   
+  createdAt   DateTime  @default(now())
+
+  actionLogId Int
+  actionLog   StudyActionLog @relation(fields: [actionLogId], references: [id], onDelete: Cascade)
 }
 
 model Subject {
