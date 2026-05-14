@@ -61,6 +61,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
     const [showNoteModal, setShowNoteModal] = useState(false);
     const [noteText, setNoteText] = useState("");
     const [selectedDay, setSelectedDay] = useState<number>(dayjs().day());
+    const [noteError, setNoteError] = useState(false);
 
     const getCurrentSchedule = useCallback((dow: number, mins: number) => {
         return allSchedules.find(s =>
@@ -111,7 +112,13 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
             const mins = timeToMinutes(now.format("HH:mm"));
             setNowDow(dow);
             setNowMinutes(mins);
-            setCurrentSchedule(getCurrentSchedule(dow, mins));
+
+            setCurrentSchedule(prev => {
+                if (status !== "IDLE" && prev) {
+                    return prev;
+                }
+                return getCurrentSchedule(dow, mins);
+            });
 
             if (currentSchedule?.endTime) {
                 const [endH, endM] = currentSchedule.endTime.split(":");
@@ -120,7 +127,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
             }
         }, 1000);
         return () => clearInterval(timer);
-    }, [currentSchedule, getCurrentSchedule]);
+    }, [currentSchedule, getCurrentSchedule, status]);
 
     const prevSchedule = getPrevSchedule(nowDow, nowMinutes);
     const nextSchedule = getNextSchedule(nowDow, nowMinutes) as (Schedule & { _offsetDays?: number }) | null;
@@ -155,7 +162,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
         <div className="min-h-screen bg-[#0a0a0a] text-white px-4 py-8 font-sans">
             <div className="max-w-2xl mx-auto space-y-5">
 
-                {/* ── Header clock ── */}
                 <div className="flex items-center justify-between mb-2">
                     <div>
                         <p className="text-xs text-neutral-500 uppercase tracking-widest mb-0.5">TCAS 70 Planner</p>
@@ -172,7 +178,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                     <div className={`w-3 h-3 rounded-full ${status === "STUDYING" ? "bg-emerald-400 animate-pulse" : status === "PAUSED" ? "bg-amber-400 animate-pulse" : "bg-neutral-700"}`} />
                 </div>
 
-                {/* ── Current session card ── */}
                 {currentSchedule ? (
                     <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6 relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-0.5 bg-linear-to-r from-emerald-500 via-emerald-400 to-transparent" />
@@ -376,29 +381,52 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                 </div>
             </div>
 
-            {/* ── Note modal ── */}
             {showNoteModal && (
                 <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4">
                     <div className="bg-neutral-900 border border-neutral-700 p-5 rounded-2xl w-full max-w-md shadow-2xl">
                         <h3 className="text-sm font-semibold text-neutral-200 mb-3">📝 จดบันทึกระหว่างเรียน</h3>
+
                         <textarea
                             value={noteText}
-                            onChange={e => setNoteText(e.target.value)}
+                            onChange={e => {
+                                setNoteText(e.target.value);
+                                if (noteError) setNoteError(false);
+                            }}
                             placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
-                            className="w-full h-36 bg-neutral-950 text-white text-sm p-3.5 rounded-xl border border-neutral-800 focus:border-blue-500 outline-none resize-none placeholder:text-neutral-600"
+                            className={`w-full h-36 bg-neutral-950 text-white text-sm p-3.5 rounded-xl border outline-none resize-none placeholder:text-neutral-600 transition-colors ${noteError
+                                    ? "border-rose-500 focus:border-rose-400"
+                                    : "border-neutral-800 focus:border-blue-500"
+                                }`}
                             autoFocus
                         />
+
+                        {noteError && (
+                            <p className="text-rose-400 text-xs mt-2 font-medium">
+                                ⚠️ กรุณากรอกข้อความก่อนกดบันทึก
+                            </p>
+                        )}
+
                         <div className="flex gap-2 mt-3">
                             <button
-                                onClick={() => { setNoteText(""); setShowNoteModal(false); }}
+                                onClick={() => {
+                                    setNoteText("");
+                                    setNoteError(false);
+                                    setShowNoteModal(false);
+                                }}
                                 className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
                             >
                                 ยกเลิก
                             </button>
                             <button
                                 onClick={() => {
-                                    if (noteText.trim()) addActionLogToDB("TAKE_NOTE", noteText);
+                                    if (!noteText.trim()) {
+                                        setNoteError(true); 
+                                        return;
+                                    }
+
+                                    addActionLogToDB("TAKE_NOTE", noteText);
                                     setNoteText("");
+                                    setNoteError(false);
                                     setShowNoteModal(false);
                                 }}
                                 className="cursor-pointer flex-1 bg-blue-600 py-2.5 rounded-xl text-sm font-bold text-white hover:bg-blue-500 active:scale-[0.98] transition-all"
@@ -409,6 +437,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                     </div>
                 </div>
             )}
+
         </div>
     );
 }
