@@ -177,7 +177,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-white px-4 py-8 font-sans">
-            <div className="max-w-2xl mx-auto space-y-5">
+            <div className="max-w-6xl mx-auto space-y-5">
 
                 <div className="flex items-center justify-between mb-2">
                     <div>

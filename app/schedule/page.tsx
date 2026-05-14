@@ -20,8 +20,8 @@ export default async function SchedulePage() {
     const currentDayIndex = bkkTime.getDay();
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] p-4 md:p-8 text-white font-sans">
-            <div className="max-w-7xl mx-auto">
+        <div className="min-h-screen bg-[#0a0a0a] px-4 py-8 text-white font-sans">
+            <div className="max-w-6xl mx-auto">
                 <header className="mb-10 text-center md:text-left flex flex-col md:flex-row justify-between items-center gap-4">
                     <div>
                         <h1 className="text-4xl font-black mb-2 tracking-tight">ตารางติว</h1>
