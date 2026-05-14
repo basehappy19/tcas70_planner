@@ -1,6 +1,7 @@
 'use server'
 
 import prisma from "@/lib/prisma";
+import { StudyActionType } from "../generated/prisma/enums";
 
 function getThaiNow() {
     return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
@@ -35,11 +36,9 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
             startHour, startMinute, 0
         );
 
-        // Server คำนวณความสายเอง
         const diffMs = now.getTime() - scheduledTime.getTime();
         const delayMinutes = Math.max(0, Math.floor(diffMs / 60000));
 
-        // Create ลง DB ทันที
         const newSession = await prisma.studyLog.create({
             data: {
                 scheduleId: schedule.id,
@@ -50,13 +49,12 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
             },
         });
 
-        // หากสาย ให้บันทึก Log การเข้าสายอัตโนมัติจากฝั่ง Server เลย
         if (delayMinutes > 0) {
             await prisma.studyActionLog.create({
                 data: {
                     studyLogId: newSession.id,
                     action: "START_LATE",
-                    note: `ระบบตรวจพบว่าเข้าสาย ${delayMinutes} นาที`,
+                    note: `เข้าสาย ${delayMinutes} นาที`,
                 }
             });
         } else {
@@ -71,7 +69,6 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
         return { 
             success: true, 
             delayMinutes, 
-            message: delayMinutes > 0 ? `สายไป ${delayMinutes} นาที` : "เข้าเรียนตรงเวลา" 
         };
     } catch (error) {
         console.error(error);
@@ -79,7 +76,7 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
     }
 }
 
-export async function addActionLogToDB(action: string, note?: string) {
+export async function addActionLogToDB(action: StudyActionType, note?: string) {
     try {
         const activeSession = await getActiveSession();
         if (!activeSession) return { success: false, message: "ไม่พบเซสชันที่กำลังดำเนินอยู่" };
