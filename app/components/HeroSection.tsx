@@ -113,10 +113,15 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
             setNowDow(dow);
             setNowMinutes(mins);
 
-            setCurrentSchedule(prev => {
-                if (status !== "IDLE" && prev) {
-                    return prev;
+            setCurrentSchedule(current => {
+                if (
+                    status !== "IDLE" &&
+                    current &&
+                    timeToMinutes(current.endTime) > mins
+                ) {
+                    return current;
                 }
+
                 return getCurrentSchedule(dow, mins);
             });
 
@@ -143,12 +148,24 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
 
     const handleEndSession = async () => {
         setIsSaving(true);
+
         await addActionLogToDB("END_SESSION");
+
         const res = await finishStudySession();
+
         setIsSaving(false);
+
         if (res.success) {
+            const now = dayjs();
+            const dow = now.day();
+            const mins = timeToMinutes(now.format("HH:mm"));
+
             setStatus("IDLE");
-            window.location.reload();
+
+            setCurrentSchedule(getCurrentSchedule(dow, mins));
+
+            setNowDow(dow);
+            setNowMinutes(mins);
         }
     };
 
@@ -252,7 +269,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                     <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-8 text-center">
                         <div className="text-4xl mb-3">☕</div>
                         <h2 className="text-xl font-bold text-white mb-1">เวลาพักผ่อน</h2>
-                        <p className="text-sm text-neutral-500">ขณะนี้ไม่มีตารางเรียน</p>
+                        <p className="text-sm text-neutral-500">ขณะนี้ไม่มีตารางติว</p>
                     </div>
                 )}
 
@@ -309,7 +326,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                                 <button
                                     key={d}
                                     onClick={() => setSelectedDay(d)}
-                                    className={`py-3 text-center transition-colors relative ${isSelected ? "bg-neutral-800" : "hover:bg-neutral-800/50"}`}
+                                    className={`cursor-pointer py-3 text-center transition-colors relative ${isSelected ? "bg-neutral-800" : "hover:bg-neutral-800/50"}`}
                                 >
                                     <p className={`text-xs font-semibold ${isToday ? "text-emerald-400" : isSelected ? "text-white" : "text-neutral-500"}`}>
                                         {DAY_NAMES_TH[d]}
@@ -328,7 +345,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                     {/* Day label */}
                     <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                         <p className="text-sm font-semibold text-neutral-300">{todayLabel(selectedDay)}</p>
-                        <p className="text-xs text-neutral-500">{daySchedules.length} ชั่วโมง</p>
+                        <p className="text-xs text-neutral-500">{daySchedules.length} คาบ</p>
                     </div>
 
                     {/* Schedule list */}
@@ -394,8 +411,8 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                             }}
                             placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
                             className={`w-full h-36 bg-neutral-950 text-white text-sm p-3.5 rounded-xl border outline-none resize-none placeholder:text-neutral-600 transition-colors ${noteError
-                                    ? "border-rose-500 focus:border-rose-400"
-                                    : "border-neutral-800 focus:border-blue-500"
+                                ? "border-rose-500 focus:border-rose-400"
+                                : "border-neutral-800 focus:border-blue-500"
                                 }`}
                             autoFocus
                         />
@@ -408,19 +425,20 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
 
                         <div className="flex gap-2 mt-3">
                             <button
+                                type="button"
                                 onClick={() => {
                                     setNoteText("");
                                     setNoteError(false);
                                     setShowNoteModal(false);
                                 }}
-                                className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+                                className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm border border-white/10 hover:bg-white/5 transition-colors"
                             >
                                 ยกเลิก
                             </button>
                             <button
                                 onClick={() => {
                                     if (!noteText.trim()) {
-                                        setNoteError(true); 
+                                        setNoteError(true);
                                         return;
                                     }
 
