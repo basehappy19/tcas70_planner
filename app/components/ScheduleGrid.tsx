@@ -70,7 +70,7 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem, is
 
     const formatTo12Hour = (time24: string) => {
         if (!time24) return "";
-        return dayjs(time24, "HH:mm").format("HH:mm");
+        return dayjs(time24, "HH:mm").format("hh:mm A");
     };
 
     const getActionLabel = (actionCode: string) => {
