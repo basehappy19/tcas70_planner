@@ -18,3 +18,21 @@ export async function updateSchedule(id: number, data: { title: string, startTim
         return { success: false, message: "ไม่สามารถอัปเดตตารางได้" };
     }
 }
+
+export async function getScheduleHistory(scheduleId: number) {
+    try {
+        const history = await prisma.studyLog.findMany({
+            where: { scheduleId: scheduleId },
+            orderBy: { date: 'desc' },
+            include: {
+                actionLogs: {
+                    orderBy: { time: 'asc' }
+                }
+            }
+        });
+        return { success: true, data: history };
+    } catch (error) {
+        console.error("Error fetching history:", error);
+        return { success: false, message: "ไม่สามารถดึงประวัติได้" };
+    }
+}

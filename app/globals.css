@@ -1,4 +1,13 @@
 @import "tailwindcss";
+@font-face {
+  font-family: "Mittraphap";
+  src: url('/Mittraphap/Mittraphap.ttf') format('truetype');
+}
+
+* {
+  box-sizing: border-box;
+  font-family: "Mittraphap", Arial, Helvetica, sans-serif;
+}
 
 :root {
   --background: #ffffff;

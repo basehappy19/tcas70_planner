@@ -21,16 +21,16 @@ export default async function SchedulePage() {
 
     return (
         <div className="min-h-screen bg-[#0a0a0a] p-4 md:p-8 text-white font-sans">
-            <div className="max-w-350 mx-auto">
+            <div className="max-w-7xl mx-auto">
                 <header className="mb-10 text-center md:text-left flex flex-col md:flex-row justify-between items-center gap-4">
                     <div>
                         <h1 className="text-4xl font-black mb-2 tracking-tight">ตารางติว</h1>
-                        <p className="text-neutral-400">ภาพรวมภารกิจ TCAS 70 ตลอดสัปดาห์</p>
+                        <p className="text-neutral-400">ภาพรวมภารกิจตลอดสัปดาห์</p>
                     </div>
                 </header>
 
                 <div className="overflow-x-auto pb-8 scrollbar-hide">
-                    <div className="grid grid-cols-7 gap-4 min-w-350 md:min-w-0">
+                    <div className="grid grid-cols-7 gap-4 min-w-250 md:min-w-0">
                         {days.map((day) => {
                             const isToday = day.dayIndex === currentDayIndex;
                             const daySchedules = allSchedules.filter(s => s.dayOfWeek === day.dayIndex);
@@ -44,7 +44,7 @@ export default async function SchedulePage() {
                                 >
                                     <div className={`py-3 px-4 rounded-2xl text-center border ${day.bg} ${day.border} ${isToday ? 'ring-2 ring-emerald-500/30' : ''}`}>
                                         <span className={`${day.color} font-bold text-sm tracking-wide`}>
-                                            {isToday ? `${day.name}` : day.name}
+                                            {day.name} {isToday && "(วันนี้)"}
                                         </span>
                                     </div>
                                     
@@ -55,7 +55,7 @@ export default async function SchedulePage() {
                                             ))
                                         ) : (
                                             <div className="text-center py-6 border border-dashed border-neutral-800 rounded-2xl">
-                                                <p className="text-xs text-neutral-600 font-medium">ไม่มีตารางเรียน</p>
+                                                <p className="text-xs text-neutral-600 font-medium">ไม่มีตาราง</p>
                                             </div>
                                         )}
                                     </div>
