@@ -436,7 +436,7 @@ export default function ResourceClient({
                                         : 'border-white/10'
                                         }`}
                                 >
-                                    <option value="">
+                                    <option disabled value="">
                                         -- เลือกรายวิชา --
                                     </option>
 

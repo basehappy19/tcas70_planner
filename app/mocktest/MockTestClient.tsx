@@ -129,7 +129,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                         onChange={e => setSelectedSubjectId(parseInt(e.target.value))}
                                         className="cursor-pointer w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3.5 py-2.5 outline-none transition-colors appearance-none"
                                     >
-                                        <option  value="" disabled>-- เลือกวิชา --</option>
+                                        <option  value="" disabled>-- เลือกรายวิชา --</option>
                                         {subjects.map(s => (
                                             <option key={s.id} value={s.id}>{s.name} · {s.fullScore} คะแนน</option>
                                         ))}
