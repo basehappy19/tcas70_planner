@@ -38,8 +38,7 @@ function scoreBg(pct: number) {
     return "bg-red-500/10 border-red-500/20";
 }
 
-// Radial progress ring
-function Ring({ pct, timeLeft, total, paused }: { pct: number; timeLeft: number; total: number; paused: boolean }) {
+function Ring({ timeLeft, total, paused }: { pct: number; timeLeft: number; total: number; paused: boolean }) {
     const r = 80, circ = 2 * Math.PI * r;
     const progress = total > 0 ? timeLeft / total : 1;
     const stroke = paused ? "#f59e0b" : timeLeft < 300 ? "#f87171" : "#34d399";
@@ -177,7 +176,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                             </span>
 
                             {/* Ring timer */}
-                            <div className="relative w-[200px] h-[200px] flex items-center justify-center mb-6">
+                            <div className="relative w-50 h-50 flex items-center justify-center mb-6">
                                 <Ring pct={0} timeLeft={timeLeft} total={totalTime} paused={phase === "paused"} />
                                 <div className="relative z-10 text-center">
                                     <p className={`text-4xl font-black tabular-nums tracking-tight ${phase === "paused" ? "text-amber-400" : isAlarm ? "text-red-400" : "text-white"}`}>
