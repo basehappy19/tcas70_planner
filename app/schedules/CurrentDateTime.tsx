@@ -37,9 +37,11 @@ export default function CurrentDateTime({ days }: { days: Day[] }) {
         <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold px-3 py-1.5 rounded-full self-start sm:self-auto">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
 
-            วันนี้ ·{" "}
-            {days.find((d) => d.dayIndex === currentDayIndex)?.name ?? "—"} ·{" "}
-            {currentTime}
+            <span suppressHydrationWarning>
+                วันนี้ ·{" "}
+                {days.find((d) => d.dayIndex === currentDayIndex)?.name ?? "—"} ·{" "}
+                {currentTime}
+            </span>
         </div>
     );
 }
