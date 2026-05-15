@@ -372,7 +372,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                                     </p>
 
                                     {nextScheduleCountdown && (
-                                        <p className="text-[11px] text-emerald-400 font-semibold">
+                                        <p suppressHydrationWarning className="text-[11px] text-emerald-400 font-semibold">
                                             {nextScheduleCountdown}
                                         </p>
                                     )}

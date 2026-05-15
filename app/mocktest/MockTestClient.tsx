@@ -8,293 +8,275 @@ import { addMockTest } from "../actions/mocktest";
 dayjs.extend(buddhistEra);
 dayjs.locale("th");
 
-type Subject = {
-    id: number;
-    name: string;
-    fullScore: number;
-};
-
+type Subject = { id: number; name: string; fullScore: number };
 type MockTestHistory = {
-    id: number;
-    score: number;
-    timeSpent: number;
-    testDate: Date;
-    notes: string | null;
-    subject: Subject;
+    id: number; score: number; timeSpent: number;
+    testDate: Date; notes: string | null; subject: Subject;
 };
-
 type MockTestStat = {
-    subjectId: number;
-    subjectName: string;
-    fullScore: number;
-    min: number;
-    max: number;
-    avg: number;
-    count: number;
+    subjectId: number; subjectName: string; fullScore: number;
+    min: number; max: number; avg: number; count: number;
 };
+type TestPhase = "setup" | "running" | "paused" | "scoring";
 
-interface Props {
-    subjects: Subject[];
-    history: MockTestHistory[];
-    stats: MockTestStat[];
+interface Props { subjects: Subject[]; history: MockTestHistory[]; stats: MockTestStat[]; }
+
+const pad = (n: number) => n.toString().padStart(2, "0");
+function formatTime(s: number) {
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    return h > 0 ? `${h}:${pad(m)}:${pad(ss)}` : `${pad(m)}:${pad(ss)}`;
 }
 
-type TestPhase = "setup" | "running" | "paused" | "scoring";
+function scoreColor(pct: number) {
+    if (pct >= 80) return "text-emerald-400";
+    if (pct >= 50) return "text-amber-400";
+    return "text-red-400";
+}
+function scoreBg(pct: number) {
+    if (pct >= 80) return "bg-emerald-500/10 border-emerald-500/20";
+    if (pct >= 50) return "bg-amber-500/10 border-amber-500/20";
+    return "bg-red-500/10 border-red-500/20";
+}
+
+// Radial progress ring
+function Ring({ pct, timeLeft, total, paused }: { pct: number; timeLeft: number; total: number; paused: boolean }) {
+    const r = 80, circ = 2 * Math.PI * r;
+    const progress = total > 0 ? timeLeft / total : 1;
+    const stroke = paused ? "#f59e0b" : timeLeft < 300 ? "#f87171" : "#34d399";
+    return (
+        <svg width="200" height="200" viewBox="0 0 200 200" className="absolute inset-0">
+            <circle cx="100" cy="100" r={r} fill="none" stroke="#1f1f1f" strokeWidth="8" />
+            <circle
+                cx="100" cy="100" r={r} fill="none"
+                stroke={stroke} strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={circ}
+                strokeDashoffset={circ * (1 - progress)}
+                transform="rotate(-90 100 100)"
+                style={{ transition: "stroke-dashoffset 0.8s ease, stroke 0.3s" }}
+            />
+        </svg>
+    );
+}
 
 export default function MockTestClient({ subjects, history, stats }: Props) {
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
-    // Timer States
     const [phase, setPhase] = useState<TestPhase>("setup");
     const [selectedSubjectId, setSelectedSubjectId] = useState<number | "">("");
-    const [inputHours, setInputHours] = useState<number>(1);
-    const [inputMinutes, setInputMinutes] = useState<number>(0);
-    const [timeLeft, setTimeLeft] = useState<number>(0); // วินาที
-    const [timeSpent, setTimeSpent] = useState<number>(0); // วินาที
-    
-    // Scoring States
-    const [score, setScore] = useState<string>("");
-    const [notes, setNotes] = useState<string>("");
+    const [inputHours, setInputHours] = useState(1);
+    const [inputMinutes, setInputMinutes] = useState(0);
+    const [timeLeft, setTimeLeft] = useState(0);
+    const [totalTime, setTotalTime] = useState(0);
+    const [timeSpent, setTimeSpent] = useState(0);
+    const [score, setScore] = useState("");
+    const [notes, setNotes] = useState("");
+    const [activeTab, setActiveTab] = useState<"history" | "stats">("history");
 
-    // หาคะแนนเต็มของวิชาที่กำลังเลือกอยู่
     const currentSubject = subjects.find(s => s.id === Number(selectedSubjectId));
-    const currentSubjectFullScore = currentSubject?.fullScore || 0;
 
-    // ระบบจับเวลา
     useEffect(() => {
-        let interval: NodeJS.Timeout;
-        if (phase === "running") {
-            interval = setInterval(() => {
-                setTimeLeft((prev) => {
-                    if (prev <= 1) {
-                        setPhase("scoring"); 
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-                setTimeSpent((prev) => prev + 1);
-            }, 1000);
-        }
-        return () => clearInterval(interval);
+        if (phase !== "running") return;
+        const id = setInterval(() => {
+            setTimeLeft(p => { if (p <= 1) { setPhase("scoring"); return 0; } return p - 1; });
+            setTimeSpent(p => p + 1);
+        }, 1000);
+        return () => clearInterval(id);
     }, [phase]);
 
-    // แปลงวินาทีเป็น HH:MM:SS
-    const formatTime = (totalSeconds: number) => {
-        const h = Math.floor(totalSeconds / 3600);
-        const m = Math.floor((totalSeconds % 3600) / 60);
-        const s = totalSeconds % 60;
-        
-        if (h > 0) {
-            return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        }
-        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    const handleStart = () => {
+        const t = inputHours * 3600 + inputMinutes * 60;
+        if (!selectedSubjectId || t <= 0) return;
+        setTotalTime(t); setTimeLeft(t); setTimeSpent(0); setPhase("running");
     };
 
-    const handleStartTest = () => {
-        const totalSeconds = (inputHours * 3600) + (inputMinutes * 60);
-        if (totalSeconds <= 0) {
-            alert("กรุณาตั้งเวลาให้มากกว่า 0 นาที");
-            return;
-        }
-        setTimeLeft(totalSeconds);
-        setTimeSpent(0);
-        setPhase("running");
-    };
-
-    const handleSubmitScore = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
-        
-        const formData = new FormData();
-        formData.append("subjectId", String(selectedSubjectId));
-        formData.append("score", score);
-        // แปลงเวลาที่ใช้ไปจากวินาทีเป็นนาที (ปัดขึ้น)
-        formData.append("timeSpent", String(Math.ceil(timeSpent / 60)));
-        formData.append("notes", notes);
-        
-        const res = await addMockTest(formData);
+        const fd = new FormData();
+        fd.append("subjectId", String(selectedSubjectId));
+        fd.append("score", score);
+        fd.append("timeSpent", String(Math.ceil(timeSpent / 60)));
+        fd.append("notes", notes);
+        const res = await addMockTest(fd);
         if (res.success) {
-            // Reset ทั้งหมดกลับไปหน้า Setup
-            setPhase("setup");
-            setSelectedSubjectId("");
-            setScore("");
-            setNotes("");
-            alert("บันทึกคะแนนเรียบร้อย!");
-        } else {
-            alert(res.message);
-        }
+            setPhase("setup"); setSelectedSubjectId(""); setScore(""); setNotes("");
+        } else alert(res.message);
         setIsSubmitting(false);
     };
 
+    const isAlarm = phase === "running" && timeLeft < 300;
+    const pct = currentSubject ? (parseFloat(score) / currentSubject.fullScore) * 100 : 0;
+
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            
-            <div className="lg:col-span-1 space-y-8">
-                
-                <div className="bg-[#1e1e1e] p-6 rounded-3xl border border-neutral-800 shadow-xl overflow-hidden relative">
-                    
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+
+            {/* ══ LEFT: Exam panel ══ */}
+            <div className="lg:col-span-2 space-y-4">
+
+                {/* Timer card */}
+                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+
+                    {/* ── Setup phase ── */}
                     {phase === "setup" && (
-                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                                <span>📝</span> จำลองการสอบ
-                            </h2>
+                        <div className="p-6">
+                            <p className="text-xs text-neutral-500 uppercase tracking-widest font-semibold mb-5">จำลองการสอบ</p>
+
                             <div className="space-y-4">
                                 <div>
-                                    <label className="text-xs text-gray-500 uppercase font-bold">วิชาที่สอบ</label>
-                                    <select 
-                                        required
+                                    <label className="text-[11px] text-neutral-500 uppercase tracking-wider font-semibold block mb-1.5">วิชา</label>
+                                    <select
                                         value={selectedSubjectId}
-                                        onChange={(e) => setSelectedSubjectId(parseInt(e.target.value))}
-                                        className="w-full bg-black text-white border border-gray-800 rounded-xl p-3 mt-1 focus:border-emerald-500 outline-none"
+                                        onChange={e => setSelectedSubjectId(parseInt(e.target.value))}
+                                        className="w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3.5 py-2.5 outline-none transition-colors appearance-none"
                                     >
-                                        <option value="" disabled>-- เลือกวิชา --</option>
+                                        <option value="" disabled>เลือกวิชา...</option>
                                         {subjects.map(s => (
-                                            <option key={s.id} value={s.id}>{s.name} (เต็ม {s.fullScore})</option>
+                                            <option key={s.id} value={s.id}>{s.name} · {s.fullScore} คะแนน</option>
                                         ))}
                                     </select>
                                 </div>
 
                                 <div>
-                                    <label className="text-xs text-gray-500 uppercase font-bold mb-1 block">ตั้งเวลา</label>
-                                    <div className="flex gap-4">
-                                        <div className="flex-1">
-                                            <div className="relative">
-                                                <input 
-                                                    type="number" min="0" max="10"
-                                                    value={inputHours}
-                                                    onChange={(e) => setInputHours(parseInt(e.target.value) || 0)}
-                                                    className="w-full bg-black text-white border border-gray-800 rounded-xl p-3 focus:border-emerald-500 outline-none pr-10 text-center text-lg"
-                                                />
-                                                <span className="absolute right-3 top-3.5 text-xs text-neutral-500">ชม.</span>
-                                            </div>
+                                    <label className="text-[11px] text-neutral-500 uppercase tracking-wider font-semibold block mb-1.5">เวลา</label>
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <input type="number" min="0" max="10" value={inputHours}
+                                                onChange={e => setInputHours(parseInt(e.target.value) || 0)}
+                                                className="w-full bg-neutral-950 text-white text-center text-lg font-bold border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3 py-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            />
+                                            <span className="absolute bottom-1.5 inset-x-0 text-center text-[10px] text-neutral-600 pointer-events-none">ชั่วโมง</span>
                                         </div>
-                                        <div className="flex-1">
-                                            <div className="relative">
-                                                <input 
-                                                    type="number" min="0" max="59"
-                                                    value={inputMinutes}
-                                                    onChange={(e) => setInputMinutes(parseInt(e.target.value) || 0)}
-                                                    className="w-full bg-black text-white border border-gray-800 rounded-xl p-3 focus:border-emerald-500 outline-none pr-10 text-center text-lg"
-                                                />
-                                                <span className="absolute right-3 top-3.5 text-xs text-neutral-500">นาที</span>
-                                            </div>
+                                        <span className="text-neutral-600 text-lg font-bold pb-4">:</span>
+                                        <div className="relative flex-1">
+                                            <input type="number" min="0" max="59" value={inputMinutes}
+                                                onChange={e => setInputMinutes(parseInt(e.target.value) || 0)}
+                                                className="w-full bg-neutral-950 text-white text-center text-lg font-bold border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3 py-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            />
+                                            <span className="absolute bottom-1.5 inset-x-0 text-center text-[10px] text-neutral-600 pointer-events-none">นาที</span>
                                         </div>
                                     </div>
                                 </div>
 
-                                <button 
-                                    onClick={handleStartTest}
-                                    disabled={!selectedSubjectId}
-                                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-neutral-800 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 mt-4 cursor-pointer"
+                                <button
+                                    onClick={handleStart}
+                                    disabled={!selectedSubjectId || (inputHours === 0 && inputMinutes === 0)}
+                                    className={`${!selectedSubjectId || (inputHours === 0 && inputMinutes === 0) ? "disabled:" : "cursor-pointer"} w-full mt-2 py-3 rounded-xl text-sm font-bold transition-all bg-emerald-500 hover:bg-emerald-400 disabled:bg-neutral-800 disabled:text-neutral-600 text-black`}
                                 >
-                                    เริ่มจับเวลา
+                                    เริ่มจับเวลา →
                                 </button>
                             </div>
                         </div>
                     )}
 
+                    {/* ── Running / Paused ── */}
                     {(phase === "running" || phase === "paused") && (
-                        <div className="animate-in fade-in zoom-in-95 duration-300 flex flex-col items-center justify-center py-4 text-center">
-                            <span className="text-emerald-400 text-sm font-bold bg-emerald-500/10 px-3 py-1 rounded-full mb-4">
+                        <div className="p-6 flex flex-col items-center">
+                            {/* Subject pill */}
+                            <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full mb-6">
                                 {currentSubject?.name}
                             </span>
-                            
-                            <div className="relative w-48 h-48 flex items-center justify-center mb-8">
-                                <div className={`absolute inset-0 border-4 rounded-full ${phase === 'paused' ? 'border-yellow-500/30' : timeLeft < 300 ? 'border-red-500/50 animate-pulse' : 'border-emerald-500/30'}`}></div>
-                                <div className={`text-5xl font-black tabular-nums tracking-tighter ${phase === 'paused' ? 'text-yellow-400' : timeLeft < 300 ? 'text-red-400' : 'text-white'}`}>
-                                    {formatTime(timeLeft)}
+
+                            {/* Ring timer */}
+                            <div className="relative w-[200px] h-[200px] flex items-center justify-center mb-6">
+                                <Ring pct={0} timeLeft={timeLeft} total={totalTime} paused={phase === "paused"} />
+                                <div className="relative z-10 text-center">
+                                    <p className={`text-4xl font-black tabular-nums tracking-tight ${phase === "paused" ? "text-amber-400" : isAlarm ? "text-red-400" : "text-white"}`}>
+                                        {formatTime(timeLeft)}
+                                    </p>
+                                    {phase === "paused" && (
+                                        <p className="text-xs text-amber-500/70 mt-1 font-semibold tracking-wider uppercase">หยุดชั่วคราว</p>
+                                    )}
+                                    {isAlarm && phase === "running" && (
+                                        <p className="text-xs text-red-400/70 mt-1 font-semibold tracking-wider uppercase animate-pulse">ใกล้หมดเวลา</p>
+                                    )}
                                 </div>
-                                {phase === "paused" && (
-                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-5xl font-black text-black/50 backdrop-blur-sm w-full h-full flex items-center justify-center rounded-full">
-                                        หยุด
-                                    </div>
-                                )}
                             </div>
 
-                            <div className="flex gap-3 w-full">
+                            {/* Time spent */}
+                            <p className="text-xs text-neutral-600 mb-5 font-mono">ผ่านไป {formatTime(timeSpent)}</p>
+
+                            {/* Controls */}
+                            <div className="flex gap-2 w-full">
                                 {phase === "running" ? (
-                                    <button 
-                                        onClick={() => setPhase("paused")}
-                                        className="flex-1 bg-yellow-600/20 text-yellow-500 hover:bg-yellow-600/30 border border-yellow-500/50 font-bold py-3 rounded-xl transition-colors cursor-pointer"
-                                    >
-                                        พักเบรก
+                                    <button onClick={() => setPhase("paused")}
+                                        className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors">
+                                        พัก
                                     </button>
                                 ) : (
-                                    <button 
-                                        onClick={() => setPhase("running")}
-                                        className="flex-1 bg-emerald-600 text-white hover:bg-emerald-500 font-bold py-3 rounded-xl transition-colors shadow-lg shadow-emerald-500/20 cursor-pointer"
-                                    >
+                                    <button onClick={() => setPhase("running")}
+                                        className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors">
                                         ทำต่อ
                                     </button>
                                 )}
-                                <button 
-                                    onClick={() => setPhase("scoring")}
-                                    className="flex-1 bg-neutral-800 text-white hover:bg-red-500/80 font-bold py-3 rounded-xl transition-colors cursor-pointer"
-                                >
+                                <button onClick={() => setPhase("scoring")}
+                                    className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold bg-neutral-800 text-neutral-300 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/20 border border-neutral-700 transition-colors">
                                     ส่งข้อสอบ
                                 </button>
                             </div>
                         </div>
                     )}
 
-                    {/* Phase 3: Scoring */}
+                    {/* ── Scoring ── */}
                     {phase === "scoring" && (
-                        <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+                        <div className="p-6">
                             <div className="text-center mb-6">
-                                <h2 className="text-2xl font-black text-emerald-400 mb-1">หมดเวลาสอบ!</h2>
-                                <p className="text-neutral-400 text-sm">
-                                    ใช้เวลาไป {Math.ceil(timeSpent / 60)} นาที
-                                </p>
+                                <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-3">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                </div>
+                                <p className="text-base font-bold text-white">หมดเวลาสอบ</p>
+                                <p className="text-xs text-neutral-500 mt-0.5 font-mono">ใช้เวลา {Math.ceil(timeSpent / 60)} นาที · {currentSubject?.name}</p>
                             </div>
 
-                            <form onSubmit={handleSubmitScore} className="space-y-4">
+                            <form onSubmit={handleSubmit} className="space-y-4">
                                 <div>
-                                    <label className="text-xs text-gray-500 uppercase font-bold">คะแนนที่ได้ ({currentSubject?.name})</label>
+                                    <label className="text-[11px] text-neutral-500 uppercase tracking-wider font-semibold block mb-1.5">คะแนนที่ได้</label>
                                     <div className="relative">
-                                        <input 
-                                            type="number" 
-                                            step="0.01"
-                                            max={currentSubjectFullScore || 999}
-                                            required
-                                            value={score}
-                                            onChange={(e) => setScore(e.target.value)}
-                                            className="w-full bg-black text-white border border-gray-800 rounded-xl p-4 mt-1 focus:border-emerald-500 outline-none text-xl font-bold"
-                                            placeholder="0.00"
-                                            autoFocus
+                                        <input type="number" step="0.01" max={currentSubject?.fullScore ?? 999}
+                                            required autoFocus value={score}
+                                            onChange={e => setScore(e.target.value)}
+                                            placeholder="0"
+                                            className="w-full bg-neutral-950 text-white text-2xl font-black border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-4 py-3 pr-24 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                         />
-                                        {currentSubjectFullScore > 0 && (
-                                            <span className="absolute right-4 top-5 text-neutral-500 font-bold">
-                                                / {currentSubjectFullScore}
+                                        {currentSubject && (
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 text-sm font-medium">
+                                                / {currentSubject.fullScore}
                                             </span>
                                         )}
                                     </div>
+                                    {/* % bar */}
+                                    {score && currentSubject && (
+                                        <div className="mt-2">
+                                            <div className="flex justify-between text-[10px] mb-1">
+                                                <span className={`font-bold ${scoreColor(pct)}`}>{pct.toFixed(1)}%</span>
+                                            </div>
+                                            <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-500 ${pct >= 80 ? "bg-emerald-400" : pct >= 50 ? "bg-amber-400" : "bg-red-400"}`}
+                                                    style={{ width: `${Math.min(pct, 100)}%` }}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div>
-                                    <label className="text-xs text-gray-500 uppercase font-bold">บันทึกช่วยจำ (ข้อผิดพลาด ฯลฯ)</label>
-                                    <textarea 
-                                        rows={2}
-                                        value={notes}
-                                        onChange={(e) => setNotes(e.target.value)}
-                                        className="w-full bg-black text-white border border-gray-800 rounded-xl p-3 mt-1 focus:border-emerald-500 outline-none resize-none"
-                                        placeholder=""
-                                    ></textarea>
+                                    <label className="text-[11px] text-neutral-500 uppercase tracking-wider font-semibold block mb-1.5">บันทึก (ไม่บังคับ)</label>
+                                    <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
+                                        placeholder="ข้อผิดพลาด สิ่งที่ต้องทบทวน..."
+                                        className="w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3.5 py-2.5 outline-none resize-none placeholder:text-neutral-700"
+                                    />
                                 </div>
 
-                                <div className="flex gap-3 mt-6">
-                                    <button 
-                                        type="button"
-                                        onClick={() => setPhase("setup")}
-                                        className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white font-bold py-3 rounded-xl transition-colors cursor-pointer text-sm"
-                                    >
+                                <div className="flex gap-2 pt-1">
+                                    <button type="button" onClick={() => setPhase("setup")}
+                                        className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm text-neutral-500 hover:text-white hover:bg-white/5 border border-neutral-800 transition-colors">
                                         ยกเลิก
                                     </button>
-                                    <button 
-                                        type="submit" 
-                                        disabled={isSubmitting}
-                                        className="flex-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 cursor-pointer"
-                                    >
-                                        {isSubmitting ? "กำลังบันทึก..." : "บันทึกผลสอบ"}
+                                    <button type="submit" disabled={isSubmitting}
+                                        className="cursor-pointer flex-2 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors">
+                                        {isSubmitting ? "กำลังบันทึก..." : "บันทึกผล"}
                                     </button>
                                 </div>
                             </form>
@@ -302,110 +284,141 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                     )}
                 </div>
 
-                {/* สถิติภาพรวม */}
-                <div className="bg-[#1e1e1e] p-6 rounded-3xl border border-neutral-800 shadow-xl">
-                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                        <span>📊</span> สถิติรายวิชา
-                    </h2>
-                    
-                    <div className="space-y-3 max-h-75 overflow-y-auto scrollbar-hide pr-1">
-                        {stats.length > 0 ? (
-                            stats.map(stat => (
-                                <div key={stat.subjectId} className="bg-black/50 p-4 rounded-2xl border border-neutral-800">
-                                    <div className="flex justify-between items-center mb-3 border-b border-neutral-800 pb-2">
-                                        <h3 className="font-bold text-emerald-400">{stat.subjectName}</h3>
-                                        <span className="text-xs text-neutral-500">สอบไปแล้ว {stat.count} ครั้ง</span>
+                {/* Stats card — desktop only, shows below timer */}
+                <div className="hidden lg:block bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+                    <p className="text-xs text-neutral-500 uppercase tracking-widest font-semibold mb-4">สถิติรายวิชา</p>
+                    <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                        {stats.length > 0 ? stats.map(stat => {
+                            const avgPct = (stat.avg / stat.fullScore) * 100;
+                            return (
+                                <div key={stat.subjectId} className="bg-neutral-950/60 border border-neutral-800/60 rounded-xl p-3.5">
+                                    <div className="flex justify-between items-start mb-2.5">
+                                        <p className="text-sm font-semibold text-neutral-200">{stat.subjectName}</p>
+                                        <span className="text-[10px] text-neutral-600">{stat.count} ครั้ง</span>
                                     </div>
                                     <div className="grid grid-cols-3 gap-2 text-center">
-                                        <div className="bg-red-500/10 rounded-lg p-2 border border-red-500/20">
-                                            <div className="text-[10px] text-red-400 font-bold uppercase">MIN</div>
-                                            <div className="text-sm font-black text-white mt-1">{stat.min.toFixed(2)}</div>
-                                        </div>
-                                        <div className="bg-yellow-500/10 rounded-lg p-2 border border-yellow-500/20">
-                                            <div className="text-[10px] text-yellow-400 font-bold uppercase">AVG</div>
-                                            <div className="text-sm font-black text-white mt-1">{stat.avg.toFixed(2)}</div>
-                                        </div>
-                                        <div className="bg-emerald-500/10 rounded-lg p-2 border border-emerald-500/20">
-                                            <div className="text-[10px] text-emerald-400 font-bold uppercase">MAX</div>
-                                            <div className="text-sm font-black text-white mt-1">{stat.max.toFixed(2)}</div>
-                                        </div>
+                                        {[
+                                            { label: "MIN", val: stat.min, cls: "text-red-400" },
+                                            { label: "AVG", val: stat.avg, cls: `${scoreColor(avgPct)}` },
+                                            { label: "MAX", val: stat.max, cls: "text-emerald-400" },
+                                        ].map(({ label, val, cls }) => (
+                                            <div key={label} className="bg-neutral-900 rounded-lg py-2">
+                                                <p className={`text-[9px] font-bold tracking-wider ${cls} opacity-60`}>{label}</p>
+                                                <p className={`text-sm font-black mt-0.5 ${cls}`}>{val.toFixed(1)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {/* avg bar */}
+                                    <div className="mt-2.5 h-1 bg-neutral-800 rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full ${avgPct >= 80 ? "bg-emerald-400" : avgPct >= 50 ? "bg-amber-400" : "bg-red-400"}`}
+                                            style={{ width: `${Math.min(avgPct, 100)}%` }} />
                                     </div>
                                 </div>
-                            ))
-                        ) : (
-                            <div className="text-center py-6 text-neutral-600 text-sm">ยังไม่มีสถิติ</div>
+                            );
+                        }) : (
+                            <p className="text-xs text-neutral-700 text-center py-6">ยังไม่มีสถิติ</p>
                         )}
                     </div>
                 </div>
-
             </div>
 
-            {/* คอลัมน์ขวา: ประวัติย้อนหลัง (เหมือนเดิม) */}
-            <div className="lg:col-span-2">
-                <div className="bg-[#1e1e1e] p-6 rounded-3xl border border-neutral-800 shadow-xl h-full">
-                    <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                        <span>🕒</span> ประวัติการทำย้อนหลัง
-                    </h2>
+            {/* ══ RIGHT: History + Stats tabs ══ */}
+            <div className="lg:col-span-3">
+                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+                    {/* Tabs */}
+                    <div className="flex border-b border-neutral-800">
+                        {(["history", "stats"] as const).map(tab => (
+                            <button key={tab} onClick={() => setActiveTab(tab)}
+                                className={`cursor-pointer flex-1 py-3.5 text-sm font-semibold transition-colors ${activeTab === tab ? "text-white border-b-2 border-emerald-500 -mb-px bg-neutral-800/30" : "text-neutral-500 hover:text-neutral-300"}`}>
+                                {tab === "history" ? `ประวัติ (${history.length})` : "สถิติ"}
+                            </button>
+                        ))}
+                    </div>
 
-                    <div className="space-y-4">
-                        {history.length > 0 ? (
-                            history.map(item => {
-                                const percentage = (item.score / item.subject.fullScore) * 100;
-                                let scoreColor = "text-red-400";
-                                if (percentage >= 80) scoreColor = "text-emerald-400";
-                                else if (percentage >= 50) scoreColor = "text-yellow-400";
-
-                                return (
-                                    <div key={item.id} className="group flex flex-col md:flex-row gap-4 bg-black/40 p-4 rounded-2xl border border-neutral-800 hover:border-emerald-500/30 transition-all">
-                                        
-                                        <div className="shrink-0 text-center md:text-left min-w-30">
-                                            <div className="text-xs text-neutral-500 font-mono mb-1">
-                                                {dayjs(item.testDate).format('D MMM BBBB')}
-                                            </div>
-                                            <div className="text-xs text-neutral-600 font-mono">
-                                                {dayjs(item.testDate).format('HH:mm น.')}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex-1">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <h3 className="font-bold text-gray-200">{item.subject.name}</h3>
-                                                <div className="text-right">
-                                                    <span className={`text-xl font-black ${scoreColor}`}>
-                                                        {item.score}
-                                                    </span>
-                                                    <span className="text-xs text-neutral-500 ml-1">
-                                                        / {item.subject.fullScore}
-                                                    </span>
+                    <div className="p-5">
+                        {/* History tab */}
+                        {activeTab === "history" && (
+                            <div className="space-y-3 max-h-150 overflow-y-auto pr-1">
+                                {history.length > 0 ? history.map(item => {
+                                    const p = (item.score / item.subject.fullScore) * 100;
+                                    return (
+                                        <div key={item.id} className={`border rounded-xl p-4 transition-all hover:border-neutral-700 ${scoreBg(p)}`}>
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-semibold text-neutral-200">{item.subject.name}</p>
+                                                    <p className="text-[11px] text-neutral-600 font-mono mt-0.5">
+                                                        {dayjs(item.testDate).format("D MMM BBBB · h:mm A")} · {item.timeSpent} นาที
+                                                    </p>
+                                                    {item.notes && (
+                                                        <p className="text-xs text-neutral-500 mt-2 border-l-2 border-neutral-700 pl-2 italic line-clamp-2">
+                                                            {item.notes}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    <span className={`text-2xl font-black tabular-nums ${scoreColor(p)}`}>{item.score}</span>
+                                                    <p className="text-[10px] text-neutral-600 mt-0.5">/ {item.subject.fullScore}</p>
+                                                    <p className={`text-[10px] font-bold mt-0.5 ${scoreColor(p)}`}>{p.toFixed(0)}%</p>
                                                 </div>
                                             </div>
-                                            
-                                            <div className="flex items-center gap-3 mt-2 text-xs">
-                                                <span className="bg-neutral-800 px-2 py-1 rounded text-neutral-300 flex items-center gap-1">
-                                                    ⏱️ ใช้เวลา {item.timeSpent} นาที
-                                                </span>
+                                            {/* Score bar */}
+                                            <div className="mt-3 h-1 bg-black/30 rounded-full overflow-hidden">
+                                                <div className={`h-full rounded-full transition-all ${p >= 80 ? "bg-emerald-400" : p >= 50 ? "bg-amber-400" : "bg-red-400"}`}
+                                                    style={{ width: `${Math.min(p, 100)}%` }} />
                                             </div>
-
-                                            {item.notes && (
-                                                <div className="mt-3 p-3 bg-neutral-900 rounded-xl border border-neutral-800 text-xs text-neutral-400">
-                                                    <span className="text-emerald-500 font-bold mr-2">Note:</span> 
-                                                    {item.notes}
-                                                </div>
-                                            )}
                                         </div>
+                                    );
+                                }) : (
+                                    <div className="text-center py-16">
+                                        <p className="text-sm text-neutral-600">ยังไม่มีประวัติ</p>
+                                        <p className="text-xs text-neutral-700 mt-1">เริ่มจำลองสอบครั้งแรกได้เลย</p>
                                     </div>
-                                );
-                            })
-                        ) : (
-                            <div className="text-center py-20 border border-dashed border-neutral-800 rounded-2xl">
-                                <p className="text-neutral-500">ยังไม่มีประวัติการทำ Mock Test</p>
-                                <p className="text-xs text-neutral-600 mt-2">ลุยเลย! จำลองสอบครั้งแรกของคุณที่แท็บด้านซ้าย</p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Stats tab */}
+                        {activeTab === "stats" && (
+                            <div className="space-y-3">
+                                {stats.length > 0 ? stats.map(stat => {
+                                    const avgPct = (stat.avg / stat.fullScore) * 100;
+                                    return (
+                                        <div key={stat.subjectId} className="bg-neutral-950/50 border border-neutral-800 rounded-xl p-4">
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div>
+                                                    <p className="text-sm font-bold text-neutral-200">{stat.subjectName}</p>
+                                                    <p className="text-[11px] text-neutral-600 mt-0.5">เต็ม {stat.fullScore} · สอบ {stat.count} ครั้ง</p>
+                                                </div>
+                                                <span className={`text-lg font-black ${scoreColor(avgPct)}`}>{avgPct.toFixed(0)}%</span>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-3 text-center mb-3">
+                                                {[
+                                                    { label: "ต่ำสุด", val: stat.min, cls: "text-red-400 bg-red-500/8 border-red-500/15" },
+                                                    { label: "เฉลี่ย", val: stat.avg, cls: `${scoreColor(avgPct)} bg-white/[0.03] border-neutral-800` },
+                                                    { label: "สูงสุด", val: stat.max, cls: "text-emerald-400 bg-emerald-500/8 border-emerald-500/15" },
+                                                ].map(({ label, val, cls }) => (
+                                                    <div key={label} className={`border rounded-lg py-2.5 ${cls}`}>
+                                                        <p className="text-[10px] opacity-60 font-medium">{label}</p>
+                                                        <p className="text-base font-black mt-0.5">{val.toFixed(1)}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                                                <div className={`h-full rounded-full ${avgPct >= 80 ? "bg-emerald-400" : avgPct >= 50 ? "bg-amber-400" : "bg-red-400"}`}
+                                                    style={{ width: `${Math.min(avgPct, 100)}%` }} />
+                                            </div>
+                                        </div>
+                                    );
+                                }) : (
+                                    <div className="text-center py-16">
+                                        <p className="text-sm text-neutral-600">ยังไม่มีสถิติ</p>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
                 </div>
             </div>
-
         </div>
     );
 }
