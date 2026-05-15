@@ -63,8 +63,31 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
         startTime: item.startTime,
         endTime: item.endTime,
     });
+    const [errors, setErrors] = useState({
+        title: false,
+        startTime: false,
+        endTime: false,
+    })
 
     const fmt = (t: string) => t ? dayjs(t, "HH:mm").format("h:mm A") : "";
+
+    const validateForm = () => {
+        const newErrors = {
+            title: !formData.title.trim(),
+            startTime: !formData.startTime,
+            endTime: !formData.endTime,
+        };
+
+        setErrors(newErrors);
+
+        return !Object.values(newErrors).some(Boolean);
+    };
+
+    const isFormValid =
+        formData.title.trim() &&
+        formData.startTime &&
+        formData.endTime;
+
     useEffect(() => {
         if (!isToday) return;
         const check = () => {
@@ -82,9 +105,21 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
     }, [isToday, item.startTime, item.endTime]);
 
     const handleUpdate = async () => {
+        if (!validateForm()) return;
+
         const res = await updateSchedule(item.id, formData);
-        if (res.success) setIsEditing(false);
-        else alert(res.message);
+
+        if (res.success) {
+            setErrors({
+                title: false,
+                startTime: false,
+                endTime: false,
+            });
+
+            setIsEditing(false);
+        } else {
+            alert(res.message);
+        }
     };
 
     const handleOpenHistory = async () => {
@@ -115,7 +150,6 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
     const scheduleInfo = `วัน${DAY_NAMES[item.dayOfWeek]} • ${fmt(item.startTime)} - ${fmt(item.endTime)}`;
     return (
         <>
-            {/* ── Card ── */}
             <div className={`relative rounded-xl p-3 border transition-all duration-200 ${isCurrentTimeSlot
                 ? "bg-emerald-500/8 border-emerald-500/30 shadow-[0_0_16px_rgba(16,185,129,0.12)]"
                 : isToday
@@ -128,12 +162,10 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                     </span>
                 )}
 
-                {/* Time */}
                 <p className="text-[10px] text-neutral-600 font-mono mb-1.5 tabular-nums">
                     {fmt(item.startTime)} – {fmt(item.endTime)}
                 </p>
 
-                {/* Title + type dot */}
                 <div className="flex items-start gap-1.5 mb-3">
                     <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${typeColor.dot}`} />
                     <p className="text-sm font-semibold text-neutral-100 leading-snug line-clamp-2">
@@ -141,7 +173,6 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                     </p>
                 </div>
 
-                {/* Actions */}
                 <div className="flex gap-1.5">
                     <button
                         onClick={handleOpenHistory}
@@ -161,13 +192,12 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                 </div>
             </div>
 
-            {/* ── Edit modal ── */}
             {isEditing && (
                 <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4 font-sans">
                     <div className="bg-[#161616] border border-neutral-800 w-full max-w-sm rounded-2xl p-6 shadow-2xl">
                         <div className="flex items-center justify-between mb-5">
                             <h2 className="text-base font-bold text-white">แก้ไขคาบเรียน</h2>
-                            <button onClick={() => setIsEditing(false)} className="text-neutral-600 hover:text-white p-1 transition-colors">
+                            <button onClick={() => setIsEditing(false)} className="cursor-pointer text-neutral-600 hover:text-white p-1 transition-colors">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
                             </button>
                         </div>
@@ -178,35 +208,105 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                                 <input
                                     type="text"
                                     value={formData.title}
-                                    onChange={e => setFormData({ ...formData, title: e.target.value })}
-                                    className="w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3.5 py-2.5 outline-none transition-colors"
+                                    onChange={e => {
+                                        setFormData({
+                                            ...formData,
+                                            title: e.target.value
+                                        });
+
+                                        if (e.target.value.trim()) {
+                                            setErrors({
+                                                ...errors,
+                                                title: false
+                                            });
+                                        }
+                                    }}
+                                    className={`w-full bg-neutral-950 text-white text-sm border rounded-xl px-3.5 py-2.5 outline-none transition-colors ${errors.title
+                                        ? "border-rose-500 focus:border-rose-400"
+                                        : "border-neutral-800 focus:border-emerald-500/60"
+                                        }`}
                                 />
+                                {errors.title && (
+                                    <p className="text-rose-400 text-xs mt-1">
+                                        กรุณากรอกชื่อวิชา
+                                    </p>
+                                )}
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-[11px] text-neutral-500 uppercase tracking-wider font-semibold block mb-1.5">เริ่ม</label>
-                                    <input type="time" value={formData.startTime}
-                                        onChange={e => setFormData({ ...formData, startTime: e.target.value })}
-                                        className="w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3 py-2.5 outline-none"
+                                    <input
+                                        type="time"
+                                        value={formData.startTime}
+                                        onChange={e => {
+                                            setFormData({
+                                                ...formData,
+                                                startTime: e.target.value
+                                            });
+
+                                            if (e.target.value) {
+                                                setErrors({
+                                                    ...errors,
+                                                    startTime: false
+                                                });
+                                            }
+                                        }}
+                                        className={`cursor-pointer w-full bg-neutral-950 text-white text-sm border rounded-xl px-3 py-2.5 outline-none ${errors.startTime
+                                            ? "border-rose-500 focus:border-rose-400"
+                                            : "border-neutral-800 focus:border-emerald-500/60"
+                                            }`}
                                     />
+                                    {errors.startTime && (
+                                        <p className="text-rose-400 text-xs mt-1">
+                                            กรุณาเลือกเวลาเริ่ม
+                                        </p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="text-[11px] text-neutral-500 uppercase tracking-wider font-semibold block mb-1.5">จบ</label>
-                                    <input type="time" value={formData.endTime}
-                                        onChange={e => setFormData({ ...formData, endTime: e.target.value })}
-                                        className="w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3 py-2.5 outline-none"
+                                    <input
+                                        type="time"
+                                        value={formData.endTime}
+                                        onChange={e => {
+                                            setFormData({
+                                                ...formData,
+                                                endTime: e.target.value
+                                            });
+
+                                            if (e.target.value) {
+                                                setErrors({
+                                                    ...errors,
+                                                    endTime: false
+                                                });
+                                            }
+                                        }}
+                                        className={`cursor-pointer w-full bg-neutral-950 text-white text-sm border rounded-xl px-3 py-2.5 outline-none ${errors.endTime
+                                            ? "border-rose-500 focus:border-rose-400"
+                                            : "border-neutral-800 focus:border-emerald-500/60"
+                                            }`}
                                     />
+                                    {errors.endTime && (
+                                        <p className="text-rose-400 text-xs mt-1">
+                                            กรุณาเลือกเวลาจบ
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         </div>
 
                         <div className="flex gap-2.5 mt-6">
                             <button onClick={() => setIsEditing(false)}
-                                className="flex-1 py-2.5 rounded-xl text-sm text-neutral-500 hover:text-white hover:bg-white/5 border border-neutral-800 transition-colors">
+                                className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm text-neutral-500 hover:text-white hover:bg-white/5 border border-neutral-800 transition-colors">
                                 ยกเลิก
                             </button>
-                            <button onClick={handleUpdate}
-                                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
+                            <button
+                                onClick={handleUpdate}
+                                disabled={!isFormValid}
+                                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${isFormValid
+                                    ? "cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white"
+                                    : "cursor-not-allowed bg-neutral-800 text-neutral-500"
+                                    }`}
+                            >
                                 บันทึก
                             </button>
                         </div>
