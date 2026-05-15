@@ -31,8 +31,8 @@ export default async function MockTestPage() {
     });
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans pb-24 md:pb-0">
-            <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
+        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans px-4 pb-24 md:pb-0">
+            <div className="max-w-6xl mx-auto py-8">
                 <div className="mb-8">
                     <h1 className="text-2xl font-black text-white tracking-tight">ระบบจำลองสอบ</h1>
                     <p className="text-neutral-500 text-sm mt-1">จับเวลา · บันทึกคะแนน · วิเคราะห์ผล</p>

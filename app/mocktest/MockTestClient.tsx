@@ -127,9 +127,9 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                     <select
                                         value={selectedSubjectId}
                                         onChange={e => setSelectedSubjectId(parseInt(e.target.value))}
-                                        className="w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3.5 py-2.5 outline-none transition-colors appearance-none"
+                                        className="cursor-pointer w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3.5 py-2.5 outline-none transition-colors appearance-none"
                                     >
-                                        <option value="" disabled>เลือกวิชา...</option>
+                                        <option  value="" disabled>-- เลือกวิชา --</option>
                                         {subjects.map(s => (
                                             <option key={s.id} value={s.id}>{s.name} · {s.fullScore} คะแนน</option>
                                         ))}
@@ -142,7 +142,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                         <div className="relative flex-1">
                                             <input type="number" min="0" max="10" value={inputHours}
                                                 onChange={e => setInputHours(parseInt(e.target.value) || 0)}
-                                                className="w-full bg-neutral-950 text-white text-center text-lg font-bold border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3 py-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                className="cursor-pointer w-full bg-neutral-950 text-white text-center text-lg font-bold border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3 py-3 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                             />
                                             <span className="absolute bottom-1.5 inset-x-0 text-center text-[10px] text-neutral-600 pointer-events-none">ชั่วโมง</span>
                                         </div>
