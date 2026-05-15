@@ -64,8 +64,7 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
         endTime: item.endTime,
     });
 
-    const fmt = (t: string) => t ? dayjs(t, "HH:mm").format("H:mm") : "";
-
+    const fmt = (t: string) => t ? dayjs(t, "HH:mm").format("h:mm A") : "";
     useEffect(() => {
         if (!isToday) return;
         const check = () => {
