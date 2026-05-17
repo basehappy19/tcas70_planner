@@ -5,56 +5,28 @@ import { getActiveTestState } from "../actions/mocktest";
 export default async function MockTestPage() {
     const subjects = await prisma.subject.findMany({ orderBy: { name: "asc" } });
 
-    // ดึงเฉพาะที่สอบเสร็จแล้ว
     const rawHistory = await prisma.mockTest.findMany({
         where: { status: "COMPLETED" },
         include: {
             subject: true,
-            actions: {
-                include: {
-                    images: true,
-                },
-                orderBy: {
-                    time: "asc",
-                },
-            },
+            actions: { include: { images: true }, orderBy: { time: "asc" } },
         },
-        orderBy: {
-            updatedAt: "desc",
-        },
+        orderBy: { updatedAt: "desc" },
     });
 
-    // เนื่องจากโครงสร้างใหม่ไม่มี score และ notes ในตาราง MockTest ตรงๆ
-    // จึงต้องทำการ Parse ออกมาจาก ActionLog (FINISH)
     const history = rawHistory.map((test) => {
         const finishLog = test.actions.find((a) => a.action === "FINISH");
-        let score = 0;
-        let notes = null;
-
-        if (finishLog && finishLog.note) {
-            // ดึงคะแนนจาก String: "สิ้นสุดการทำสอบ | คะแนน: 85.5"
-            const scoreMatch = finishLog.note.match(/คะแนน:\s*([\d.]+)/);
-            if (scoreMatch) score = parseFloat(scoreMatch[1]);
-
-            // ดึงบันทึกเพิ่มเติม
-            const noteMatch = finishLog.note.split("บันทึกเพิ่มเติม:\n");
-            if (noteMatch.length > 1) notes = noteMatch[1];
-        }
-
         return {
             id: test.id,
-            score,
-            timeSpent: test.timeSpent,
+            score: test.score ?? 0,
             testDate: test.createdAt,
-            notes,
+            notes: finishLog?.note ?? null,
             subject: test.subject,
             actions: test.actions,
         };
     });
 
-    // คำนวณ Stats แบบ Manual ใน Server
     const statsMap = new Map<number, { min: number; max: number; sum: number; count: number }>();
-    
     for (const h of history) {
         const sId = h.subject.id;
         if (!statsMap.has(sId)) {
@@ -90,12 +62,7 @@ export default async function MockTestPage() {
                     <h1 className="text-2xl font-black text-white tracking-tight">ระบบจำลองสอบ</h1>
                     <p className="text-neutral-500 text-sm mt-1">จับเวลา · บันทึกคะแนน · วิเคราะห์ผล</p>
                 </div>
-                <MockTestClient
-                    subjects={subjects}
-                    history={history}
-                    stats={stats}
-                    initialActiveTest={activeTest}
-                />
+                <MockTestClient subjects={subjects} history={history} stats={stats} initialActiveTest={activeTest} />
             </div>
         </div>
     );

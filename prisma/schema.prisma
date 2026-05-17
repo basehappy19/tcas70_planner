@@ -76,13 +76,7 @@ model MockTest {
 
   status MockTestStatus @default(RUNNING)
 
-  totalTime Int
-  timeSpent Int @default(0)
-
-  lastStartedAt DateTime?
-
-  inputHours Int
-  inputMinutes Int
+  score Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

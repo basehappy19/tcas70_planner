@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import dayjs from "dayjs";
 import buddhistEra from "dayjs/plugin/buddhistEra";
 import "dayjs/locale/th";
@@ -12,6 +12,7 @@ import {
     finishMockTest,
     ActiveTestState,
     addMockTestNote,
+    backToRunning,
 } from "../actions/mocktest";
 import { uploadImageToDrive } from "../actions/drive";
 import Image from "next/image";
@@ -23,13 +24,7 @@ dayjs.locale("th");
    TYPES
 ══════════════════════════════════════ */
 type Subject = { id: number; name: string; fullScore: number };
-
-type ActionImage = {
-    id: number;
-    url: string;
-    caption: string | null;
-};
-
+type ActionImage = { id: number; url: string; caption: string | null };
 type ActionItem = {
     id: number;
     action: "START" | "PAUSE" | "RESUME" | "SCORING" | "NOTE" | "FINISH";
@@ -37,24 +32,21 @@ type ActionItem = {
     time: Date;
     images: ActionImage[];
 };
-
 type TestHistory = {
     id: number;
     score: number;
-    timeSpent: number;
     testDate: Date;
     notes: string | null;
     subject: Subject;
     actions: ActionItem[];
 };
-
 type TestStat = { subjectId: number; subjectName: string; fullScore: number; min: number; max: number; avg: number; count: number };
 type TestPhase = "setup" | "running" | "paused" | "scoring";
-
 type LocalImage = {
     id: string;
     file: File;
     preview: string;
+    caption: string;
     status: "pending" | "uploading" | "done" | "error";
     driveUrl?: string;
 };
@@ -70,12 +62,10 @@ interface Props {
    HELPERS
 ══════════════════════════════════════ */
 const pad = (n: number) => n.toString().padStart(2, "0");
-
 function formatTime(s: number) {
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
     return h > 0 ? `${h}:${pad(m)}:${pad(ss)}` : `${pad(m)}:${pad(ss)}`;
 }
-
 function pctColor(pct: number) {
     if (pct >= 80) return "text-emerald-400";
     if (pct >= 50) return "text-amber-400";
@@ -107,7 +97,6 @@ function TimerRing({ timeLeft, total, paused }: { timeLeft: number; total: numbe
         </svg>
     );
 }
-
 function ScoreBar({ score, fullScore }: { score: number; fullScore: number }) {
     const pct = (score / fullScore) * 100;
     return (
@@ -116,7 +105,6 @@ function ScoreBar({ score, fullScore }: { score: number; fullScore: number }) {
         </div>
     );
 }
-
 function StatGrid({ min, avg, max, fullScore }: { min: number; avg: number; max: number; fullScore: number }) {
     return (
         <div className="grid grid-cols-3 gap-2 text-center mt-2.5">
@@ -130,19 +118,15 @@ function StatGrid({ min, avg, max, fullScore }: { min: number; avg: number; max:
         </div>
     );
 }
-
-/* ══════════════════════════════════════
-   ACTION META
-══════════════════════════════════════ */
 function actionMeta(action: ActionItem["action"]) {
     switch (action) {
-        case "START":   return { label: "เริ่มทำข้อสอบ",    icon: "▶", colorClass: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" };
-        case "PAUSE":   return { label: "พักการทำข้อสอบ",   icon: "⏸", colorClass: "text-amber-400 bg-amber-500/10 border-amber-500/20" };
-        case "RESUME":  return { label: "กลับมาทำต่อ",      icon: "⏯", colorClass: "text-sky-400 bg-sky-500/10 border-sky-500/20" };
-        case "SCORING": return { label: "ส่งข้อสอบ",         icon: "✓", colorClass: "text-rose-400 bg-rose-500/10 border-rose-500/20" };
-        case "NOTE":    return { label: "โน้ตระหว่างทำ",    icon: "✎", colorClass: "text-violet-400 bg-violet-500/10 border-violet-500/20" };
-        case "FINISH":  return { label: "บันทึกผลสอบ",      icon: "🏁", colorClass: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" };
-        default:        return { label: "กิจกรรม",           icon: "•",  colorClass: "text-neutral-400 bg-neutral-500/10 border-neutral-500/20" };
+        case "START":   return { label: "เริ่มทำข้อสอบ",   icon: "▶",  colorClass: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" };
+        case "PAUSE":   return { label: "พักการทำข้อสอบ",  icon: "⏸",  colorClass: "text-amber-400 bg-amber-500/10 border-amber-500/20" };
+        case "RESUME":  return { label: "กลับมาทำต่อ",     icon: "⏯",  colorClass: "text-sky-400 bg-sky-500/10 border-sky-500/20" };
+        case "SCORING": return { label: "ส่งข้อสอบ",       icon: "✓",  colorClass: "text-rose-400 bg-rose-500/10 border-rose-500/20" };
+        case "NOTE":    return { label: "โน้ตระหว่างทำ",   icon: "✎",  colorClass: "text-violet-400 bg-violet-500/10 border-violet-500/20" };
+        case "FINISH":  return { label: "บันทึกผลสอบ",     icon: "🏁", colorClass: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" };
+        default:        return { label: "กิจกรรม",          icon: "•",  colorClass: "text-neutral-400 bg-neutral-500/10 border-neutral-500/20" };
     }
 }
 
@@ -151,89 +135,116 @@ function actionMeta(action: ActionItem["action"]) {
 ══════════════════════════════════════ */
 export default function MockTestClient({ subjects, history, stats, initialActiveTest }: Props) {
 
-    /* ── State ── */
+    /* ── Phase & subject ── */
     const [phase, setPhase] = useState<TestPhase>(
         initialActiveTest ? (initialActiveTest.status.toLowerCase() as TestPhase) : "setup"
     );
     const [selectedSubject, setSelectedSubject] = useState<number | "">(initialActiveTest?.subjectId ?? "");
-    const [inputHours, setInputHours] = useState(initialActiveTest?.inputHours ?? 1);
-    const [inputMinutes, setInputMinutes] = useState(initialActiveTest?.inputMinutes ?? 0);
-    const [totalTime, setTotalTime] = useState(initialActiveTest?.totalTime ?? 0);
-    const [timeSpent, setTimeSpent] = useState(initialActiveTest?.timeSpent ?? 0);
+
+    /* ── Timer (local only) ── */
+    const [inputHours, setInputHours] = useState(1);
+    const [inputMinutes, setInputMinutes] = useState(0);
+    const [totalTime, setTotalTime] = useState(0);
+    const [timeSpent, setTimeSpent] = useState(0);
+
+    /* ── Scoring / UI ── */
     const [score, setScore] = useState("");
     const [notes, setNotes] = useState("");
+    const [forcedScoring, setForcedScoring] = useState(false);
     const [activeTab, setActiveTab] = useState<"history" | "stats">("history");
     const [showNotes, setShowNotes] = useState(false);
     const [quickNote, setQuickNote] = useState("");
+    const [noteModalVisible, setNoteModalVisible] = useState(false);
     const [localImages, setLocalImages] = useState<LocalImage[]>([]);
     const [isSavingNote, setIsSavingNote] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isFinished, setIsFinished] = useState(false);
     const [expandedHistory, setExpandedHistory] = useState<number | null>(null);
 
+    /* ── Derived ── */
     const subject = subjects.find(s => s.id === Number(selectedSubject));
     const timeLeft = Math.max(0, totalTime - timeSpent);
     const scorePct = subject && score ? (parseFloat(score) / subject.fullScore) * 100 : 0;
+    const noteHasContent = quickNote.trim().length > 0 || localImages.length > 0;
+    const pendingCount = localImages.filter(i => i.status === "pending").length;
+    const uploadingCount = localImages.filter(i => i.status === "uploading").length;
 
-    /* ── Cleanup previews on unmount ── */
+    /* ── Refs ── */
+    const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const phaseRef = useRef(phase);
+
+    /* ══════════════════════════════════════
+       EFFECTS
+    ══════════════════════════════════════ */
+
+    // Keep phaseRef in sync
+    useEffect(() => { phaseRef.current = phase; }, [phase]);
+
+    // Cleanup object URLs on unmount
     useEffect(() => () => {
         localImages.forEach(img => URL.revokeObjectURL(img.preview));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    /* ── Sync with server every 3s ── */
+    // Countdown — single interval, ref-guarded
     useEffect(() => {
-        if (isFinished) return;
-
-        const id = setInterval(async () => {
-            const server = await getActiveTestState();
-
-            if (!server) {
-                if (phase !== "setup") setPhase("setup");
-                return;
-            }
-
-            const nextPhase = server.status.toLowerCase() as TestPhase;
-            if (nextPhase !== phase) setPhase(nextPhase);
-
-            setSelectedSubject(server.subjectId);
-            setInputHours(server.inputHours);
-            setInputMinutes(server.inputMinutes);
-            setTotalTime(server.totalTime);
-
-            if (Math.abs(server.timeSpent - timeSpent) > 2) {
-                setTimeSpent(server.timeSpent);
-            }
-        }, 3000);
-
-        return () => clearInterval(id);
-    }, [phase, timeSpent, isFinished]);
-
-    /* ── Local countdown ── */
-    useEffect(() => {
+        if (countdownRef.current) {
+            clearInterval(countdownRef.current);
+            countdownRef.current = null;
+        }
         if (phase !== "running") return;
-        const id = setInterval(() => {
+
+        countdownRef.current = setInterval(() => {
             setTimeSpent(prev => {
                 const next = prev + 1;
                 if (next >= totalTime && totalTime > 0) {
+                    setForcedScoring(true);
                     setPhase("scoring");
                     enterScoringPhase();
+                    if (countdownRef.current) {
+                        clearInterval(countdownRef.current);
+                        countdownRef.current = null;
+                    }
                     return totalTime;
                 }
                 return next;
             });
         }, 1000);
-        return () => clearInterval(id);
+
+        return () => {
+            if (countdownRef.current) {
+                clearInterval(countdownRef.current);
+                countdownRef.current = null;
+            }
+        };
     }, [phase, totalTime]);
 
-    /* ── Handlers ── */
+    // Sync phase with server every 3s — runs once, reads phase via ref
+    useEffect(() => {
+        const id = setInterval(async () => {
+            const server = await getActiveTestState();
+            if (!server) {
+                if (phaseRef.current !== "setup") setPhase("setup");
+                return;
+            }
+            const nextPhase = server.status.toLowerCase() as TestPhase;
+            if (nextPhase !== phaseRef.current) setPhase(nextPhase);
+            setSelectedSubject(server.subjectId);
+        }, 3000);
+        return () => clearInterval(id);
+    }, []);
+
+    /* ══════════════════════════════════════
+       HANDLERS
+    ══════════════════════════════════════ */
+
     const handleStart = async () => {
         const t = inputHours * 3600 + inputMinutes * 60;
         if (!selectedSubject || t <= 0) return;
         setTotalTime(t);
         setTimeSpent(0);
+        setForcedScoring(false);
         setPhase("running");
-        await startMockTest({ subjectId: Number(selectedSubject), totalTime: t, inputHours, inputMinutes });
+        await startMockTest({ subjectId: Number(selectedSubject) });
     };
 
     const handleTogglePause = async () => {
@@ -243,8 +254,15 @@ export default function MockTestClient({ subjects, history, stats, initialActive
     };
 
     const handleForceScoring = async () => {
+        setForcedScoring(false);
         setPhase("scoring");
         await enterScoringPhase();
+    };
+
+    const handleBackToRunning = async () => {
+        setForcedScoring(false);
+        setPhase("running");
+        await backToRunning();
     };
 
     const handleCancel = async () => {
@@ -252,10 +270,12 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         setSelectedSubject("");
         setScore("");
         setNotes("");
+        setTimeSpent(0);
+        setTotalTime(0);
+        setForcedScoring(false);
         await cancelMockTest();
     };
 
-    /* ── Submit final score — ใช้ finishMockTest แทน addMockTest ── */
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
@@ -271,7 +291,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                 setNotes("");
                 setTimeSpent(0);
                 setTotalTime(0);
-                setIsFinished(true);
+                setForcedScoring(false);
             } else {
                 alert((res as { success: false; message?: string }).message ?? "บันทึกไม่สำเร็จ");
             }
@@ -287,10 +307,15 @@ export default function MockTestClient({ subjects, history, stats, initialActive
             id: crypto.randomUUID(),
             file,
             preview: URL.createObjectURL(file),
+            caption: "",
             status: "pending",
         }));
         setLocalImages(prev => [...prev, ...newImages]);
         e.target.value = "";
+    };
+
+    const handleCaptionChange = (id: string, caption: string) => {
+        setLocalImages(prev => prev.map(i => i.id === id ? { ...i, caption } : i));
     };
 
     const handleRemoveImage = (id: string) => {
@@ -301,30 +326,21 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         });
     };
 
-    /* ── Save note — upload images แล้วส่ง note + images รวมครั้งเดียว ── */
     const handleSaveNote = async () => {
-        if (!quickNote.trim() && localImages.length === 0) {
-            setShowNotes(false);
-            return;
-        }
-
+        if (!noteHasContent) return;
         setIsSavingNote(true);
-
         try {
-            /* 1) upload pending images */
             const uploadedImages: { url: string; caption?: string }[] = [];
 
             for (const img of localImages.filter(i => i.status === "pending")) {
                 setLocalImages(prev => prev.map(i => i.id === img.id ? { ...i, status: "uploading" } : i));
-
                 try {
                     const fd = new FormData();
                     fd.append("file", img.file);
                     const res = await uploadImageToDrive(fd);
-
                     if (res.success && res.fileId) {
                         const driveUrl = `https://drive.google.com/thumbnail?id=${res.fileId}&sz=w1200`;
-                        uploadedImages.push({ url: driveUrl });
+                        uploadedImages.push({ url: driveUrl, caption: img.caption || undefined });
                         setLocalImages(prev => prev.map(i => i.id === img.id ? { ...i, status: "done", driveUrl } : i));
                     } else {
                         setLocalImages(prev => prev.map(i => i.id === img.id ? { ...i, status: "error" } : i));
@@ -334,25 +350,17 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                 }
             }
 
-            /* 2) รวม images ที่ "done" อยู่แล้วก่อนหน้า */
             const alreadyDone = localImages
                 .filter(i => i.status === "done" && i.driveUrl)
-                .map(i => ({ url: i.driveUrl! }));
-
+                .map(i => ({ url: i.driveUrl!, caption: i.caption || undefined }));
             const allImages = [...alreadyDone, ...uploadedImages];
 
-            /* 3) บันทึก note + images ในคราวเดียว */
             const noteRes = await addMockTestNote({
                 note: quickNote.trim() || undefined,
                 images: allImages.length > 0 ? allImages : undefined,
             });
+            if (!noteRes.success) { alert("บันทึกโน้ตไม่สำเร็จ"); return; }
 
-            if (!noteRes.success) {
-                alert("บันทึกโน้ตไม่สำเร็จ");
-                return;
-            }
-
-            /* 4) clear state */
             localImages.forEach(img => URL.revokeObjectURL(img.preview));
             setQuickNote("");
             setLocalImages([]);
@@ -362,8 +370,15 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         }
     };
 
-    const pendingCount = localImages.filter(i => i.status === "pending").length;
-    const uploadingCount = localImages.filter(i => i.status === "uploading").length;
+    const resetNoteModal = () => {
+        setNoteModalVisible(false);
+        setTimeout(() => {
+            setShowNotes(false);
+            setQuickNote("");
+            localImages.forEach(img => URL.revokeObjectURL(img.preview));
+            setLocalImages([]);
+        }, 300);
+    };
 
     /* ══════════════════════════════════════
        RENDER
@@ -371,7 +386,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
     return (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-            {/* ════ LEFT: Timer Panel ════ */}
+            {/* ════ LEFT ════ */}
             <div className="lg:col-span-2 space-y-4">
                 <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
 
@@ -379,7 +394,6 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                     {phase === "setup" && (
                         <div className="p-6 space-y-4">
                             <p className="text-[11px] uppercase tracking-widest text-neutral-500 font-semibold">จำลองการสอบ</p>
-
                             <div className="space-y-1.5">
                                 <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-semibold">วิชา</label>
                                 <select
@@ -391,7 +405,6 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                     {subjects.map(s => <option key={s.id} value={s.id}>{s.name} · {s.fullScore} คะแนน</option>)}
                                 </select>
                             </div>
-
                             <div className="space-y-1.5">
                                 <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-semibold">เวลา</label>
                                 <div className="flex items-center gap-2">
@@ -413,7 +426,6 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                     ))}
                                 </div>
                             </div>
-
                             <button
                                 onClick={handleStart}
                                 disabled={!selectedSubject || (inputHours === 0 && inputMinutes === 0)}
@@ -430,7 +442,6 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                             <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full mb-6">
                                 {subject?.name}
                             </span>
-
                             <div className="relative w-45 h-45 flex items-center justify-center mb-4">
                                 <TimerRing timeLeft={timeLeft} total={totalTime} paused={phase === "paused"} />
                                 <div className="relative z-10 text-center">
@@ -441,20 +452,14 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                     {phase === "running" && timeLeft < 300 && <p className="text-[10px] text-red-400/70 mt-1 font-semibold uppercase tracking-wider animate-pulse">ใกล้หมดเวลา</p>}
                                 </div>
                             </div>
-
                             <p className="text-xs text-neutral-600 font-mono mb-5">ผ่านไป {formatTime(timeSpent)}</p>
-
                             <div className="flex gap-2 w-full">
-                                <button
-                                    onClick={handleTogglePause}
-                                    className={`cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${phase === "running" ? "bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"}`}
-                                >
+                                <button onClick={handleTogglePause}
+                                    className={`cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${phase === "running" ? "bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"}`}>
                                     {phase === "running" ? "พัก" : "ทำต่อ"}
                                 </button>
-
                                 <button
-                                    onClick={() => setShowNotes(true)}
-                                    title="จดโน้ต"
+                                    onClick={() => { setShowNotes(true); requestAnimationFrame(() => setNoteModalVisible(true)); }}
                                     className="cursor-pointer relative w-11 h-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -466,11 +471,8 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                         </span>
                                     )}
                                 </button>
-
-                                <button
-                                    onClick={handleForceScoring}
-                                    className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold bg-neutral-800 text-neutral-300 border border-neutral-700 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/20 transition-colors"
-                                >
+                                <button onClick={handleForceScoring}
+                                    className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold bg-neutral-800 text-neutral-300 border border-neutral-700 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/20 transition-colors">
                                     ส่งข้อสอบ
                                 </button>
                             </div>
@@ -482,23 +484,43 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                         <div className="p-6">
                             <div className="flex items-center gap-3 mb-6">
                                 <div className="w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                                    {forcedScoring ? (
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round">
+                                            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                                        </svg>
+                                    ) : (
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round">
+                                            <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                    )}
                                 </div>
                                 <div>
-                                    <p className="text-sm font-bold text-white">หมดเวลาสอบ</p>
-                                    <p className="text-xs text-neutral-500 font-mono">{Math.ceil(timeSpent / 60)} นาที · {subject?.name}</p>
+                                    <p className="text-sm font-bold text-white">
+                                        {forcedScoring ? "หมดเวลาสอบ" : "ส่งข้อสอบแล้ว"}
+                                    </p>
+                                    <p className="text-xs text-neutral-500 font-mono">{subject?.name}</p>
                                 </div>
                             </div>
 
-                            {/* ใช้ onSubmit={handleSubmit} แทน addMockTest */}
+                            {!forcedScoring && (
+                                <button
+                                    onClick={handleBackToRunning}
+                                    className="cursor-pointer w-full mb-4 py-2 rounded-xl text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-colors flex items-center justify-center gap-1.5"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                        <path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+                                    </svg>
+                                    กลับไปทำต่อ
+                                </button>
+                            )}
+
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <div>
                                     <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-semibold block mb-1.5">คะแนนที่ได้</label>
                                     <div className="relative">
                                         <input
                                             type="number" step="0.01" max={subject?.fullScore ?? 999}
-                                            required autoFocus
-                                            value={score} onChange={e => setScore(e.target.value)}
+                                            required autoFocus value={score} onChange={e => setScore(e.target.value)}
                                             placeholder="0"
                                             className="w-full bg-neutral-950 text-white text-2xl font-black border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-4 py-3 pr-20 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
                                         />
@@ -511,27 +533,20 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                         </>
                                     )}
                                 </div>
-
                                 <div>
                                     <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-semibold block mb-1.5">บันทึก</label>
-                                    <textarea
-                                        rows={2} value={notes} onChange={e => setNotes(e.target.value)}
+                                    <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
                                         placeholder="ข้อผิดพลาด สิ่งที่ต้องทบทวน..."
                                         className="w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3.5 py-2.5 outline-none resize-none placeholder:text-neutral-700"
                                     />
                                 </div>
-
                                 <div className="flex gap-2 pt-1">
-                                    <button
-                                        type="button" onClick={handleCancel}
-                                        className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm text-neutral-500 border border-neutral-800 hover:text-white hover:bg-white/5 transition-colors"
-                                    >
+                                    <button type="button" onClick={handleCancel}
+                                        className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm text-neutral-500 border border-neutral-800 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/5 transition-colors">
                                         ยกเลิก
                                     </button>
-                                    <button
-                                        type="submit" disabled={isSubmitting}
-                                        className="cursor-pointer flex-2 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors"
-                                    >
+                                    <button type="submit" disabled={isSubmitting}
+                                        className="cursor-pointer flex-2 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors">
                                         {isSubmitting ? "กำลังบันทึก..." : "บันทึกผล"}
                                     </button>
                                 </div>
@@ -558,34 +573,29 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                 </div>
             </div>
 
-            {/* ════ RIGHT: History / Stats tabs ════ */}
+            {/* ════ RIGHT ════ */}
             <div className="lg:col-span-3 bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
                 <div className="flex border-b border-neutral-800">
                     {(["history", "stats"] as const).map(tab => (
-                        <button
-                            key={tab} onClick={() => setActiveTab(tab)}
-                            className={`cursor-pointer flex-1 py-3.5 text-sm font-semibold transition-colors ${activeTab === tab ? "text-white border-b-2 border-emerald-500 -mb-px bg-neutral-800/30" : "text-neutral-500 hover:text-neutral-300"}`}
-                        >
+                        <button key={tab} onClick={() => setActiveTab(tab)}
+                            className={`cursor-pointer flex-1 py-3.5 text-sm font-semibold transition-colors ${activeTab === tab ? "text-white border-b-2 border-emerald-500 -mb-px bg-neutral-800/30" : "text-neutral-500 hover:text-neutral-300"}`}>
                             {tab === "history" ? `ประวัติ (${history.length})` : "สถิติ"}
                         </button>
                     ))}
                 </div>
-
                 <div className="p-5">
-                    {/* ── History Tab ── */}
                     {activeTab === "history" && (
                         <div className="space-y-3 max-h-150 overflow-y-auto pr-1">
                             {history.length > 0 ? history.map(item => {
                                 const p = (item.score / item.subject.fullScore) * 100;
                                 const expanded = expandedHistory === item.id;
-
                                 return (
                                     <div key={item.id} className={`border rounded-xl p-4 hover:border-neutral-700 transition-colors ${pctBorder(p)}`}>
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-semibold text-neutral-200">{item.subject.name}</p>
                                                 <p className="text-[11px] text-neutral-600 font-mono mt-0.5">
-                                                    {dayjs(item.testDate).format("D MMM BBBB · h:mm A")} · {Math.ceil(item.timeSpent / 60)} นาที
+                                                    {dayjs(item.testDate).format("D MMM BBBB · h:mm A")}
                                                 </p>
                                                 {item.notes && (
                                                     <p className="text-xs text-neutral-500 mt-2 border-l-2 border-neutral-700 pl-2 italic line-clamp-2">
@@ -599,70 +609,45 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                                 <p className={`text-[10px] font-bold mt-0.5 ${pctColor(p)}`}>{p.toFixed(0)}%</p>
                                             </div>
                                         </div>
-
                                         <ScoreBar score={item.score} fullScore={item.subject.fullScore} />
-
-                                        {/* Toggle actions */}
                                         {item.actions.length > 0 && (
-                                            <button
-                                                onClick={() => setExpandedHistory(expanded ? null : item.id)}
-                                                className="mt-3 text-xs text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
-                                            >
+                                            <button onClick={() => setExpandedHistory(expanded ? null : item.id)}
+                                                className="mt-3 text-xs text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer">
                                                 {expanded ? "ซ่อนกิจกรรม ▲" : `ดูกิจกรรม (${item.actions.length}) ▼`}
                                             </button>
                                         )}
-
-                                        {/* Expanded action log */}
                                         {expanded && (
                                             <div className="mt-4 space-y-2.5 border-t border-neutral-800 pt-4">
                                                 {item.actions.map(act => {
                                                     const meta = actionMeta(act.action);
                                                     return (
                                                         <div key={act.id} className="flex gap-3">
-                                                            {/* Icon */}
                                                             <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 text-xs ${meta.colorClass}`}>
                                                                 {meta.icon}
                                                             </div>
-
                                                             <div className="flex-1 min-w-0 pt-0.5">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-xs font-semibold text-neutral-300">{meta.label}</span>
-                                                                    <span className="text-[10px] text-neutral-600 font-mono">
-                                                                        {dayjs(act.time).format("h:mm A")}
-                                                                    </span>
+                                                                    <span className="text-[10px] text-neutral-600 font-mono">{dayjs(act.time).format("h:mm A")}</span>
                                                                 </div>
-
-                                                                {/* Note text (strip score line for FINISH) */}
-                                                                {act.note && act.action !== "FINISH" && (
-                                                                    <p className="text-xs text-neutral-500 mt-1 leading-relaxed">{act.note}</p>
-                                                                )}
-                                                                {act.action === "FINISH" && act.note && (() => {
-                                                                    const parts = act.note.split("บันทึกเพิ่มเติม:\n");
-                                                                    return parts[1] ? (
-                                                                        <p className="text-xs text-neutral-500 mt-1 leading-relaxed">{parts[1]}</p>
-                                                                    ) : null;
-                                                                })()}
-
-                                                                {/* Images */}
+                                                                {act.note && <p className="text-xs text-neutral-500 mt-1 leading-relaxed">{act.note}</p>}
                                                                 {act.images.length > 0 && (
-                                                                    <div className="flex gap-1.5 mt-2 flex-wrap">
+                                                                    <div className="flex gap-2 mt-2 flex-wrap">
                                                                         {act.images.map(img => (
-                                                                            <a
-                                                                                key={img.id}
-                                                                                href={img.url}
-                                                                                target="_blank"
-                                                                                rel="noopener noreferrer"
-                                                                                className="block"
-                                                                            >
-                                                                                <Image
-                                                                                    width={128}
-                                                                                    height={128}
-                                                                                    quality={100}
-                                                                                    src={img.url}
-                                                                                    alt={img.caption ?? ""}
-                                                                                    className="w-16 h-16 object-cover rounded-lg border border-neutral-700 hover:opacity-80 transition-opacity"
-                                                                                />
-                                                                            </a>
+                                                                            <div key={img.id} className="flex flex-col gap-1">
+                                                                                <a href={img.url} target="_blank" rel="noopener noreferrer" className="block">
+                                                                                    <Image
+                                                                                        width={128} height={128} quality={100} src={img.url}
+                                                                                        alt={img.caption ?? ""}
+                                                                                        className="w-16 h-16 object-cover rounded-lg border border-neutral-700 hover:opacity-80 transition-opacity"
+                                                                                    />
+                                                                                </a>
+                                                                                {img.caption && (
+                                                                                    <p className="text-[10px] text-neutral-500 w-16 leading-tight text-center line-clamp-2">
+                                                                                        {img.caption}
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
                                                                         ))}
                                                                     </div>
                                                                 )}
@@ -682,8 +667,6 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                             )}
                         </div>
                     )}
-
-                    {/* ── Stats Tab ── */}
                     {activeTab === "stats" && (
                         <div className="space-y-3">
                             {stats.length > 0 ? stats.map(stat => {
@@ -701,11 +684,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                         <ScoreBar score={stat.avg} fullScore={stat.fullScore} />
                                     </div>
                                 );
-                            }) : (
-                                <div className="text-center py-16">
-                                    <p className="text-sm text-neutral-600">ยังไม่มีสถิติ</p>
-                                </div>
-                            )}
+                            }) : <div className="text-center py-16"><p className="text-sm text-neutral-600">ยังไม่มีสถิติ</p></div>}
                         </div>
                     )}
                 </div>
@@ -713,10 +692,10 @@ export default function MockTestClient({ subjects, history, stats, initialActive
 
             {/* ════ NOTE MODAL ════ */}
             {showNotes && (
-                <div className="fixed inset-0 z-70 flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowNotes(false)} />
-
-                    <div className="relative w-full max-w-xl max-h-[90vh] flex flex-col rounded-3xl border border-neutral-800 bg-neutral-950 shadow-2xl overflow-hidden">
+                <div onClick={resetNoteModal}
+                    className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 backdrop-blur-md ${noteModalVisible ? "bg-black/60 opacity-100" : "bg-black/0 opacity-0"}`}>
+                    <div onClick={e => e.stopPropagation()}
+                        className={`relative w-full max-w-xl max-h-[90vh] flex flex-col rounded-[28px] border border-white/10 bg-[#121212]/95 shadow-2xl overflow-hidden transition-all duration-300 ${noteModalVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-95 opacity-0"}`}>
 
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-800">
@@ -731,83 +710,104 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                     <p className="text-[11px] text-neutral-500">จดระหว่างทำข้อสอบ</p>
                                 </div>
                             </div>
-                            <button
-                                onClick={() => setShowNotes(false)}
-                                className="cursor-pointer w-9 h-9 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors flex items-center justify-center text-sm"
-                            >
+                            {/* ปุ่มปิดทำงานได้เสมอ */}
+                            <button onClick={resetNoteModal}
+                                className="cursor-pointer w-9 h-9 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors flex items-center justify-center text-sm">
                                 ✕
                             </button>
                         </div>
 
                         {/* Body */}
                         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-                            <textarea
-                                value={quickNote} onChange={e => setQuickNote(e.target.value)}
+                            <textarea value={quickNote} onChange={e => setQuickNote(e.target.value)}
                                 placeholder="เช่น สูตรที่ลืม จุดที่ต้องกลับมาทวน..."
                                 className="w-full min-h-35 rounded-2xl border border-neutral-800 bg-neutral-900 px-4 py-3.5 text-sm text-white leading-relaxed outline-none resize-none placeholder:text-neutral-700 focus:border-emerald-500/50 transition-colors"
                             />
-
-                            {/* Image section */}
                             <div className="space-y-3">
                                 <div className="flex items-center justify-between">
                                     <p className="text-[11px] uppercase tracking-widest text-neutral-500 font-semibold">รูปภาพ</p>
                                     {localImages.length > 0 && <span className="text-[11px] text-neutral-600">{localImages.length} รูป</span>}
                                 </div>
-
                                 {localImages.length > 0 ? (
-                                    <div className="grid grid-cols-3 gap-2">
+                                    <div className="space-y-2">
                                         {localImages.map(img => (
-                                            <div key={img.id} className="relative group rounded-2xl overflow-hidden border border-neutral-800 bg-black aspect-square">
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img src={img.preview} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                            <div key={img.id} className="flex gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-2.5">
+                                                {/* Thumbnail */}
+                                                <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-neutral-800 bg-black shrink-0">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img src={img.preview} alt="" className="w-full h-full object-cover" />
 
-                                                {img.status === "uploading" && (
-                                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                                        <svg className="animate-spin w-6 h-6 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                                        </svg>
-                                                    </div>
-                                                )}
-                                                {img.status === "done" && (
-                                                    <div className="absolute bottom-1.5 left-1.5 bg-emerald-500 rounded-lg px-1.5 py-0.5 flex items-center gap-1">
-                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
-                                                        <span className="text-[9px] font-bold text-black">อัพแล้ว</span>
-                                                    </div>
-                                                )}
-                                                {img.status === "error" && (
-                                                    <div className="absolute bottom-1.5 left-1.5 bg-red-500 rounded-lg px-1.5 py-0.5">
-                                                        <span className="text-[9px] font-bold text-white">ล้มเหลว</span>
-                                                    </div>
-                                                )}
-                                                {img.status === "pending" && (
-                                                    <div className="absolute bottom-1.5 left-1.5 bg-neutral-800/80 backdrop-blur rounded-lg px-1.5 py-0.5">
-                                                        <span className="text-[9px] font-medium text-neutral-400">รอบันทึก</span>
-                                                    </div>
-                                                )}
+                                                    {/* Status overlay */}
+                                                    {img.status === "uploading" && (
+                                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                                            <svg className="animate-spin w-5 h-5 text-emerald-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                            </svg>
+                                                        </div>
+                                                    )}
 
-                                                {(img.status === "pending" || img.status === "error") && (
-                                                    <button
-                                                        onClick={() => handleRemoveImage(img.id)}
-                                                        className="cursor-pointer absolute top-1.5 right-1.5 w-7 h-7 rounded-lg bg-black/60 backdrop-blur border border-white/10 text-white text-xs opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-all flex items-center justify-center"
-                                                    >
-                                                        ✕
-                                                    </button>
-                                                )}
+                                                    {/* Status badge */}
+                                                    {img.status === "done" && (
+                                                        <div className="absolute bottom-1 left-1 bg-emerald-500 rounded-md px-1 py-0.5 flex items-center gap-0.5">
+                                                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
+                                                        </div>
+                                                    )}
+                                                    {img.status === "error" && (
+                                                        <div className="absolute bottom-1 left-1 bg-red-500 rounded-md px-1 py-0.5">
+                                                            <span className="text-[8px] font-bold text-white">!</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Right: filename + caption input + remove */}
+                                                <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <p className="text-[11px] text-neutral-500 truncate leading-tight pt-0.5">
+                                                            {img.file.name}
+                                                        </p>
+                                                        {(img.status === "pending" || img.status === "error") && (
+                                                            <button
+                                                                onClick={() => handleRemoveImage(img.id)}
+                                                                className="cursor-pointer shrink-0 w-6 h-6 rounded-lg bg-neutral-800 hover:bg-red-500/20 hover:text-red-400 text-neutral-500 transition-colors flex items-center justify-center text-xs"
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    <input
+                                                        type="text"
+                                                        value={img.caption}
+                                                        onChange={e => handleCaptionChange(img.id, e.target.value)}
+                                                        placeholder="คำอธิบายรูป (ถ้ามี)"
+                                                        disabled={img.status === "uploading" || img.status === "done"}
+                                                        className="w-full bg-neutral-950 border border-neutral-800 focus:border-emerald-500/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-neutral-700 outline-none transition-colors"
+                                                    />
+
+                                                    <p className="text-[10px] text-neutral-700">
+                                                        {img.status === "pending" && "รอบันทึก"}
+                                                        {img.status === "uploading" && <span className="text-amber-400">กำลังอัพโหลด…</span>}
+                                                        {img.status === "done" && <span className="text-emerald-400">อัพโหลดแล้ว ✓</span>}
+                                                        {img.status === "error" && <span className="text-red-400">อัพโหลดไม่สำเร็จ</span>}
+                                                    </p>
+                                                </div>
                                             </div>
                                         ))}
 
-                                        {/* Add more tile */}
-                                        <label className="cursor-pointer rounded-2xl border border-dashed border-neutral-700 bg-neutral-900/50 aspect-square flex flex-col items-center justify-center gap-1 hover:border-emerald-500/40 hover:bg-emerald-500/3 transition-colors">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-neutral-600">
-                                                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                                            </svg>
-                                            <span className="text-[10px] text-neutral-600">เพิ่มรูป</span>
+                                        {/* Add more */}
+                                        <label className="cursor-pointer flex items-center gap-2.5 rounded-2xl border border-dashed border-neutral-700 bg-neutral-900/50 px-4 py-3 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-colors">
+                                            <div className="w-8 h-8 rounded-xl bg-neutral-800 flex items-center justify-center shrink-0">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
+                                                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                                                </svg>
+                                            </div>
+                                            <span className="text-sm text-neutral-400">เพิ่มรูปภาพ</span>
                                             <input type="file" multiple accept="image/*" onChange={handlePickImages} className="hidden" />
                                         </label>
                                     </div>
                                 ) : (
-                                    <label className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-neutral-700 bg-neutral-900/50 px-6 py-8 cursor-pointer hover:border-emerald-500/40 hover:bg-emerald-500/3 transition-colors">
+                                    <label className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-neutral-700 bg-neutral-900/50 px-6 py-8 cursor-pointer hover:border-emerald-500/40 transition-colors">
                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-neutral-500">
                                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                                             <polyline points="17 8 12 3 7 8" />
@@ -833,10 +833,10 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                             : <span className="text-neutral-700">ยังไม่มีรูป</span>
                                 }
                             </p>
-                            <button
-                                onClick={handleSaveNote} disabled={isSavingNote}
-                                className="cursor-pointer px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-black text-sm font-bold transition-colors active:scale-95"
-                            >
+                            {/* disabled ถ้าไม่มีข้อมูล */}
+                            <button onClick={handleSaveNote}
+                                disabled={isSavingNote || !noteHasContent}
+                                className="cursor-pointer px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-black text-sm font-bold transition-colors active:scale-95">
                                 {isSavingNote ? "กำลังบันทึก…" : "บันทึก"}
                             </button>
                         </div>
