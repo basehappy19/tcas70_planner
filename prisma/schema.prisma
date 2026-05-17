@@ -66,8 +66,6 @@ model Subject {
   fullScore Float
   mockTests MockTest[]
   resources Resource[]
-
-  activeTests ActiveMockTest[]
 }
 
 model MockTest {
@@ -76,70 +74,63 @@ model MockTest {
   subjectId Int
   subject   Subject @relation(fields: [subjectId], references: [id])
 
-  score     Float
-  timeSpent Int
-  testDate  DateTime @default(now())
-  notes     String?  @db.Text
-
-  snapshots MockTestSnapshot[]
-}
-
-model ActiveMockTest {
-  id Int @id @default(autoincrement())
-
-  subjectId Int
-  subject   Subject @relation(fields: [subjectId], references: [id])
+  status MockTestStatus @default(RUNNING)
 
   totalTime Int
   timeSpent Int @default(0)
 
   lastStartedAt DateTime?
-  status        String
 
-  inputHours   Int
+  inputHours Int
   inputMinutes Int
 
-  updatedAt DateTime           @updatedAt
-  snapshots MockTestSnapshot[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  actions MockTestActionLog[]
 }
 
-enum MockTestSnapshotType {
+enum MockTestStatus {
+  RUNNING
+  PAUSED
+  SCORING
+  COMPLETED
+}
+
+model MockTestActionLog {
+  id Int @id @default(autoincrement())
+
+  mockTestId Int
+  mockTest   MockTest @relation(fields: [mockTestId], references: [id])
+
+  action MockTestActionType
+
+  time DateTime @default(now())
+
+  note String? @db.Text
+
+  images MockTestImage[]
+}
+
+model MockTestImage {
+  id Int @id @default(autoincrement())
+
+  actionLogId Int
+  actionLog   MockTestActionLog @relation(fields: [actionLogId], references: [id], onDelete: Cascade)
+
+  url String
+  caption String?
+
+  createdAt DateTime @default(now())
+}
+
+enum MockTestActionType {
   START
   PAUSE
   RESUME
   SCORING
   NOTE
-}
-
-model MockTestSnapshot {
-  id Int @id @default(autoincrement())
-
-  activeMockTestId Int
-  activeMockTest   ActiveMockTest @relation(fields: [activeMockTestId], references: [id], onDelete: Cascade)
-
-  type MockTestSnapshotType
-
-  timeSpent Int
-  remaining Int
-  note      String? @db.Text
-
-  createdAt DateTime @default(now())
-
-  images     MockTestSnapshotImage[]
-  mockTest   MockTest?               @relation(fields: [mockTestId], references: [id])
-  mockTestId Int?
-}
-
-model MockTestSnapshotImage {
-  id Int @id @default(autoincrement())
-
-  snapshotId Int
-  snapshot   MockTestSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-
-  url     String
-  caption String?
-
-  createdAt DateTime @default(now())
+  FINISH
 }
 
 model Resource {
