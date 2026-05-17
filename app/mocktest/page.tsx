@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma";
 import MockTestClient from "./MockTestClient";
-import { getActiveTestState } from "../actions/mocktest"; // 🌟 Import เพิ่ม
+import { getActiveTestState } from "../actions/mocktest";
 
 export default async function MockTestPage() {
     const subjects = await prisma.subject.findMany({ orderBy: { name: "asc" } });

@@ -8,100 +8,148 @@ datasource db {
 }
 
 model Schedule {
-  id          Int        @id @default(autoincrement())
-  dayOfWeek   Int        
-  startTime   String     
-  endTime     String     
-  title       String    
-  type        String     
-  logs        StudyLog[]
+  id        Int        @id @default(autoincrement())
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  title     String
+  type      String
+  logs      StudyLog[]
 }
 
 model StudyLog {
-  id             Int               @id @default(autoincrement())
-  scheduleId     Int
-  schedule       Schedule          @relation(fields: [scheduleId], references: [id])
-  date           DateTime          @default(now())
-  actualStartAt  DateTime?
-  delayMinutes   Int               @default(0)
-  status         String            @default("IN_PROGRESS")
-  actionLogs     StudyActionLog[]  
-  createdAt      DateTime          @default(now())
+  id            Int              @id @default(autoincrement())
+  scheduleId    Int
+  schedule      Schedule         @relation(fields: [scheduleId], references: [id])
+  date          DateTime         @default(now())
+  actualStartAt DateTime?
+  delayMinutes  Int              @default(0)
+  status        String           @default("IN_PROGRESS")
+  actionLogs    StudyActionLog[]
+  createdAt     DateTime         @default(now())
 }
 
 enum StudyActionType {
-  START_ON_TIME 
-  START_LATE   
-  PAUSE         
-  RESUME        
-  TAKE_NOTE     
-  END_SESSION   
+  START_ON_TIME
+  START_LATE
+  PAUSE
+  RESUME
+  TAKE_NOTE
+  END_SESSION
 }
 
 model StudyActionLog {
-  id          Int             @id @default(autoincrement())
-  studyLogId  Int
-  studyLog    StudyLog        @relation(fields: [studyLogId], references: [id])
-  time        DateTime        @default(now())
-  
-  action      StudyActionType 
-  
-  note        String?         @db.Text
-  images      NoteImage[]
+  id         Int      @id @default(autoincrement())
+  studyLogId Int
+  studyLog   StudyLog @relation(fields: [studyLogId], references: [id])
+  time       DateTime @default(now())
+
+  action StudyActionType
+
+  note   String?     @db.Text
+  images NoteImage[]
 }
 
 model NoteImage {
-  id          Int       @id @default(autoincrement())
-  url         String   
-  caption     String?
-  createdAt   DateTime  @default(now())
+  id        Int      @id @default(autoincrement())
+  url       String
+  caption   String?
+  createdAt DateTime @default(now())
 
   actionLogId Int
   actionLog   StudyActionLog @relation(fields: [actionLogId], references: [id], onDelete: Cascade)
 }
 
 model Subject {
-  id          Int        @id @default(autoincrement())
-  name        String     @unique
-  fullScore   Float      
-  mockTests   MockTest[]
-  resources   Resource[]
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  fullScore Float
+  mockTests MockTest[]
+  resources Resource[]
+
+  activeTests ActiveMockTest[]
 }
 
 model MockTest {
-  id          Int      @id @default(autoincrement())
-  
-  subjectId   Int
-  subject     Subject  @relation(fields: [subjectId], references: [id])
-  
-  score       Float    
-  timeSpent   Int    
-  testDate    DateTime @default(now())
-  notes       String?  @db.Text
+  id Int @id @default(autoincrement())
+
+  subjectId Int
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  score     Float
+  timeSpent Int
+  testDate  DateTime @default(now())
+  notes     String?  @db.Text
 }
 
 model ActiveMockTest {
-  id            Int       @id @default(autoincrement())
-  subjectId     Int
-  totalTime     Int       
-  timeSpent     Int       @default(0)
-  lastStartedAt DateTime? 
-  status        String    
-  inputHours    Int
-  inputMinutes  Int
-  updatedAt     DateTime  @updatedAt
+  id Int @id @default(autoincrement())
+
+  subjectId Int
+  subject   Subject @relation(fields: [subjectId], references: [id])
+
+  totalTime Int
+  timeSpent Int @default(0)
+
+  lastStartedAt DateTime?
+  status        String
+
+  inputHours   Int
+  inputMinutes Int
+
+  snapshots MockTestSnapshot[]
+
+  updatedAt DateTime @updatedAt
+}
+
+enum MockTestSnapshotType {
+  START
+  PAUSE
+  RESUME
+  SCORING
+  NOTE
+}
+
+model MockTestSnapshot {
+  id Int @id @default(autoincrement())
+
+  activeTestId Int
+  activeTest   ActiveMockTest @relation(fields: [activeTestId], references: [id], onDelete: Cascade)
+
+  type MockTestSnapshotType
+
+  timeSpent Int
+  remaining Int
+
+  note String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  images MockTestSnapshotImage[]
+}
+
+model MockTestSnapshotImage {
+  id Int @id @default(autoincrement())
+
+  snapshotId Int
+  snapshot   MockTestSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  url     String
+  caption String?
+
+  createdAt DateTime @default(now())
 }
 
 model Resource {
-  id        Int      @id @default(autoincrement())
+  id        Int          @id @default(autoincrement())
   subjectId Int
   title     String
   type      ResourceType
-  url       String?  
-  content   String? 
-  createdAt DateTime @default(now())
+  url       String?
+  content   String?
+  createdAt DateTime     @default(now())
 
-  subject   Subject  @relation(fields: [subjectId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
 }
 
 enum ResourceType {
