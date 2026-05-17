@@ -66,17 +66,17 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
     const [currentTime, setCurrentTime] = useState(initialTime);
     const [nowDow, setNowDow] = useState<number>(dayjs().day());
     const [nowMinutes, setNowMinutes] = useState(timeToMinutes(dayjs().format("HH:mm")));
-    
+
     const [status, setStatus] = useState<"IDLE" | "STUDYING" | "PAUSED">(initialStatus);
-    
+
     const [isSaving, setIsSaving] = useState(false);
     const [canEndSession, setCanEndSession] = useState(false);
     const [showNoteModal, setShowNoteModal] = useState(false);
+    const [noteModalVisible, setNoteModalVisible] = useState(false);
     const [noteText, setNoteText] = useState("");
     const [selectedDay, setSelectedDay] = useState<number>(dayjs().day());
     const [noteError, setNoteError] = useState(false);
 
-    // 🌟 เปลี่ยนมาใช้ State แบบ Array ของ Object แทนการแยก File และ Preview
     const [images, setImages] = useState<NoteImageData[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -212,7 +212,7 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
 
     const handleEndSession = async () => {
         setIsSaving(true);
-        
+
         if (status === "IDLE" && currentSchedule?.id) {
             await createStudySession({ scheduleId: currentSchedule.id });
         }
@@ -239,7 +239,6 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
         return DAY_FULL_TH[dow];
     };
 
-    // 🌟 ฟังก์ชันจัดการรูปภาพแบบใหม่
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
         if (files.length > 0) {
@@ -271,11 +270,19 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
     };
 
     const resetNoteModal = () => {
-        setNoteText("");
-        setNoteError(false);
-        images.forEach(img => URL.revokeObjectURL(img.preview));
-        setImages([]);
-        setShowNoteModal(false);
+        setNoteModalVisible(false);
+
+        setTimeout(() => {
+            setNoteText("");
+            setNoteError(false);
+
+            images.forEach(img =>
+                URL.revokeObjectURL(img.preview)
+            );
+
+            setImages([]);
+            setShowNoteModal(false);
+        }, 250);
     };
 
     return (
@@ -342,7 +349,13 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                                     </div>
                                     <div className="flex gap-2">
                                         <button
-                                            onClick={() => setShowNoteModal(true)}
+                                            onClick={() => {
+                                                setShowNoteModal(true);
+
+                                                requestAnimationFrame(() => {
+                                                    setNoteModalVisible(true);
+                                                });
+                                            }}
                                             className="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition-colors"
                                         >
                                             จดโน้ต
@@ -513,125 +526,257 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
 
             {/* ── Note Modal ── */}
             {showNoteModal && (
-                <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4">
-                    <div className="bg-neutral-900 border border-neutral-700 p-5 rounded-2xl w-full max-w-md shadow-2xl">
-                        <h3 className="text-sm font-semibold text-neutral-200 mb-3">📝 จดบันทึกระหว่างเรียน</h3>
+                <div
+                    onClick={resetNoteModal}
+                    className={`fixed inset-0 z-50 backdrop-blur-md flex items-end sm:items-center justify-center p-4 transition-all duration-300 ${noteModalVisible
+                            ? "bg-black/40 opacity-100"
+                            : "bg-black/0 opacity-0"
+                        }`}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        className={`w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/10 bg-[#121212]/95 shadow-[0_20px_80px_rgba(0,0,0,0.55)] transition-all duration-300 ${noteModalVisible
+                                ? "translate-y-0 scale-100 opacity-100"
+                                : "translate-y-6 scale-95 opacity-0"
+                            }`}
+                    >
+                        {/* Header */}
+                        <div className="flex items-start justify-between px-6 pt-6 pb-5 border-b border-white/6">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">📝</span>
 
-                        <textarea
-                            value={noteText}
-                            onChange={e => {
-                                setNoteText(e.target.value);
-                                if (noteError) setNoteError(false);
-                            }}
-                            placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
-                            className={`w-full h-24 bg-neutral-950 text-white text-sm p-3.5 rounded-xl border outline-none resize-none placeholder:text-neutral-600 transition-colors ${noteError
-                                ? "border-rose-500 focus:border-rose-400"
-                                : "border-neutral-800 focus:border-blue-500"
-                                }`}
-                            autoFocus
-                        />
+                                    <h3 className="text-xl font-black text-white">
+                                        จดบันทึกระหว่างเรียน
+                                    </h3>
+                                </div>
 
-                        {/* 🌟 แสดงรายการรูปภาพพร้อมช่องกรอกคำอธิบายแต่ละรูป */}
-                        {images.length > 0 && (
-                            <div className="flex flex-col gap-3 mt-3 max-h-48 overflow-y-auto pr-1">
-                                {images.map((img, index) => (
-                                    <div key={index} className="flex gap-3 items-start bg-neutral-950 p-2.5 rounded-xl border border-neutral-800">
-                                        <div className="relative shrink-0">
-                                            <Image width={72} height={72} src={img.preview} alt={`Preview ${index}`} className="h-16 w-16 rounded-lg border border-neutral-700 object-cover" />
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRemoveImage(index)}
-                                                className="absolute -top-2 -left-2 bg-rose-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md cursor-pointer hover:bg-rose-400 transition-colors"
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                        <textarea
-                                            value={img.caption}
-                                            onChange={(e) => handleCaptionChange(index, e.target.value)}
-                                            placeholder="เพิ่มคำอธิบายรูปภาพ..."
-                                            rows={2}
-                                            className="flex-1 bg-transparent text-white text-xs border-none outline-none resize-none placeholder:text-neutral-600 mt-1"
-                                        />
-                                    </div>
-                                ))}
+                                <p className="text-sm text-neutral-500 mt-2">
+                                    บันทึกสูตร จุดที่ยังไม่เข้าใจ หรือสิ่งที่ต้องทบทวน
+                                </p>
                             </div>
-                        )}
 
-                        <div className="mt-3 flex items-center">
-                            <input
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                className="hidden"
-                                ref={fileInputRef}
-                                onChange={handleImageChange}
-                            />
                             <button
-                                type="button"
-                                onClick={() => fileInputRef.current?.click()}
-                                className="text-xs flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors bg-neutral-800 px-3 py-1.5 rounded-lg cursor-pointer"
+                                onClick={resetNoteModal}
+                                className="cursor-pointer shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition-colors flex items-center justify-center"
                             >
-                                📷 <span>แนบรูปภาพเพิ่ม</span>
+                                ✕
                             </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="px-6 py-5 space-y-5">
+                            <div>
+                                <textarea
+                                    value={noteText}
+                                    onChange={(e) => {
+                                        setNoteText(e.target.value);
+
+                                        if (noteError) {
+                                            setNoteError(false);
+                                        }
+                                    }}
+                                    placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
+                                    className={`w-full min-h-45 bg-black/40 text-white text-sm leading-relaxed rounded-2xl border px-5 py-4 outline-none resize-none transition-all placeholder:text-neutral-600 ${noteError
+                                            ? "border-rose-500 focus:border-rose-400"
+                                            : "border-white/8 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                                        }`}
+                                    autoFocus
+                                />
+
+                                <div className="flex items-center justify-between mt-2 px-1">
+
+                                    <p className="text-xs text-neutral-600">
+                                        {noteText.length}/1000
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Upload */}
+                            <div className="flex flex-wrap items-center gap-3">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    className="hidden"
+                                    ref={fileInputRef}
+                                    onChange={handleImageChange}
+                                />
+
+                                <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/3 hover:bg-white/6 px-4 py-2.5 text-sm font-medium text-neutral-300 transition-colors"
+                                >
+                                    <span>📷</span>
+
+                                    <span>แนบรูปภาพเพิ่ม</span>
+                                </button>
+
+                                {images.length > 0 && (
+                                    <div className="text-sm text-neutral-500">
+                                        {images.length} รูป
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Images */}
                             {images.length > 0 && (
-                                <span className="ml-3 text-xs text-neutral-500">{images.length} รูป</span>
+                                <div className="grid gap-3 max-h-65 overflow-y-auto pr-1">
+                                    {images.map((img, index) => (
+                                        <div
+                                            key={index}
+                                            className="flex gap-4 rounded-2xl border border-white/6 bg-black/25 p-3"
+                                        >
+                                            <div className="relative shrink-0">
+                                                <Image
+                                                    width={88}
+                                                    height={88}
+                                                    src={img.preview}
+                                                    alt={`Preview ${index}`}
+                                                    className="w-22 h-22 rounded-xl object-cover border border-white/10"
+                                                />
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleRemoveImage(index)
+                                                    }
+                                                    className="cursor-pointer absolute -top-2 -right-2 w-6 h-6 rounded-full bg-rose-500 hover:bg-rose-400 text-white text-xs flex items-center justify-center shadow-lg transition-colors"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+
+                                            <div className="flex-1">
+                                                <p className="text-xs font-medium text-neutral-500 mb-2">
+                                                    คำอธิบายรูปภาพ
+                                                </p>
+
+                                                <textarea
+                                                    value={img.caption}
+                                                    onChange={(e) =>
+                                                        handleCaptionChange(
+                                                            index,
+                                                            e.target.value
+                                                        )
+                                                    }
+                                                    placeholder="เช่น สรุปสูตรหน้า 12 หรือโจทย์ที่ยังทำไม่ได้..."
+                                                    rows={3}
+                                                    className="w-full bg-transparent text-sm text-white placeholder:text-neutral-600 outline-none resize-none leading-relaxed"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {noteError && (
+                                <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3">
+                                    <p className="text-sm text-rose-400 font-medium">
+                                        ⚠️ กรุณากรอกข้อความหรือแนบรูปภาพก่อนบันทึก
+                                    </p>
+                                </div>
                             )}
                         </div>
 
-                        {noteError && (
-                            <p className="text-rose-400 text-xs mt-2 font-medium">
-                                ⚠️ กรุณากรอกข้อความหรือแนบรูปภาพก่อนกดบันทึก
-                            </p>
-                        )}
-
-                        <div className="flex gap-2 mt-4">
+                        {/* Footer */}
+                        <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-2">
                             <button
                                 type="button"
                                 onClick={resetNoteModal}
                                 disabled={isUploading}
-                                className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm border border-white/10 hover:bg-white/5 transition-colors disabled:opacity-50"
+                                className="cursor-pointer h-13 rounded-2xl border border-white/8 bg-white/3 hover:bg-white/6 text-sm font-bold text-neutral-300 transition-all disabled:opacity-50"
                             >
                                 ยกเลิก
                             </button>
+
                             <button
                                 onClick={async () => {
-                                    if (!noteText.trim() && images.length === 0) {
+                                    if (
+                                        !noteText.trim() &&
+                                        images.length === 0
+                                    ) {
                                         setNoteError(true);
                                         return;
                                     }
 
                                     setIsUploading(true);
-                                    let uploadedImages: { url: string; caption: string }[] = [];
+
+                                    let uploadedImages: {
+                                        url: string;
+                                        caption: string;
+                                    }[] = [];
 
                                     if (images.length > 0) {
-                                        const uploadPromises = images.map(async (img) => {
-                                            const formData = new FormData();
-                                            formData.append("file", img.file);
-                                            const uploadRes = await uploadImageToDrive(formData);
-                                            return uploadRes.success ? { url: uploadRes.url, caption: img.caption } : null;
+                                        const uploadPromises = images.map(
+                                            async (img) => {
+                                                const formData =
+                                                    new FormData();
+
+                                                formData.append(
+                                                    "file",
+                                                    img.file
+                                                );
+
+                                                const uploadRes =
+                                                    await uploadImageToDrive(
+                                                        formData
+                                                    );
+
+                                                return uploadRes.success
+                                                    ? {
+                                                        url: uploadRes.url,
+                                                        caption:
+                                                            img.caption,
+                                                    }
+                                                    : null;
+                                            }
+                                        );
+
+                                        const results =
+                                            await Promise.all(
+                                                uploadPromises
+                                            );
+
+                                        uploadedImages = results.filter(
+                                            (
+                                                res
+                                            ): res is {
+                                                url: string;
+                                                caption: string;
+                                            } => res !== null
+                                        );
+                                    }
+
+                                    if (
+                                        status === "IDLE" &&
+                                        currentSchedule?.id
+                                    ) {
+                                        await createStudySession({
+                                            scheduleId:
+                                                currentSchedule.id,
                                         });
 
-                                        const results = await Promise.all(uploadPromises);
-                                        // กรองเอาเฉพาะที่อัปโหลดสำเร็จ
-                                        uploadedImages = results.filter((res): res is { url: string; caption: string } => res !== null);
+                                        setStatus("STUDYING");
                                     }
 
-                                    if (status === "IDLE" && currentSchedule?.id) {
-                                        await createStudySession({ scheduleId: currentSchedule.id });
-                                        setStatus("STUDYING"); 
-                                    }
-
-                                    // 🌟 ส่งข้อมูลพร้อม caption ไปบันทึก
-                                    await addActionLogToDB("TAKE_NOTE", noteText, uploadedImages);
+                                    await addActionLogToDB(
+                                        "TAKE_NOTE",
+                                        noteText,
+                                        uploadedImages
+                                    );
 
                                     setIsUploading(false);
+
                                     resetNoteModal();
                                 }}
                                 disabled={isUploading}
-                                className="cursor-pointer flex-1 bg-blue-600 py-2.5 rounded-xl text-sm font-bold text-white hover:bg-blue-500 active:scale-[0.98] transition-all disabled:opacity-50 disabled:bg-blue-800"
+                                className="cursor-pointer h-13 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black shadow-lg shadow-emerald-500/20 transition-all active:scale-[0.98] disabled:opacity-50"
                             >
-                                {isUploading ? `กำลังอัปโหลด ${images.length} รูป...` : "บันทึก"}
+                                {isUploading
+                                    ? `กำลังอัปโหลด ${images.length} รูป...`
+                                    : "บันทึก"}
                             </button>
                         </div>
                     </div>
