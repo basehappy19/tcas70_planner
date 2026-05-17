@@ -14,6 +14,7 @@ import {
     addMockTestNote,
 } from "../actions/mocktest";
 import { uploadImageToDrive } from "../actions/drive";
+import Image from "next/image";
 
 dayjs.extend(buddhistEra);
 dayjs.locale("th");
@@ -627,7 +628,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                                                 <div className="flex items-center gap-2">
                                                                     <span className="text-xs font-semibold text-neutral-300">{meta.label}</span>
                                                                     <span className="text-[10px] text-neutral-600 font-mono">
-                                                                        {dayjs(act.time).format("HH:mm")}
+                                                                        {dayjs(act.time).format("h:mm A")}
                                                                     </span>
                                                                 </div>
 
@@ -653,8 +654,10 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                                                                 rel="noopener noreferrer"
                                                                                 className="block"
                                                                             >
-                                                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                                                <img
+                                                                                <Image
+                                                                                    width={128}
+                                                                                    height={128}
+                                                                                    quality={100}
                                                                                     src={img.url}
                                                                                     alt={img.caption ?? ""}
                                                                                     className="w-16 h-16 object-cover rounded-lg border border-neutral-700 hover:opacity-80 transition-opacity"
