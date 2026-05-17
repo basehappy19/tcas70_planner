@@ -166,6 +166,23 @@ export default function ResourceClient({
     const [filterSubject, setFilterSubject] = useState<string>('all')
     const [filterType, setFilterType] = useState<string>('all')
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const [modalVisible, setModalVisible] = useState(false)
+
+    const openModal = () => {
+        setIsModalOpen(true)
+
+        requestAnimationFrame(() => {
+            setModalVisible(true)
+        })
+    }
+
+    const closeModal = () => {
+        setModalVisible(false)
+
+        setTimeout(() => {
+            setIsModalOpen(false)
+        }, 300)
+    }
     const [form, setForm] = useState({
         subjectId: '',
         title: '',
@@ -216,43 +233,85 @@ export default function ResourceClient({
 
     return (
         <section className="space-y-6">
-            <div className="flex flex-wrap gap-4 items-center justify-between bg-[#111] p-4 rounded-2xl border border-white/5">
-                <div className="flex gap-3 overflow-x-auto pb-2 md:pb-0">
-                    <select
-                        className="cursor-pointer bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ring-blue-500"
-                        onChange={(e) =>
-                            setFilterSubject(e.target.value)
-                        }
-                    >
-                        <option value="all">ทุกรายวิชา</option>
+            <div className="bg-[#111] border border-white/5 rounded-3xl p-4 sm:p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    {/* Filters */}
+                    <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                        <div className="relative flex-1 min-w-0">
+                            <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-bold mb-1.5 block">
+                                รายวิชา
+                            </label>
 
-                        {subjects.map((s) => (
-                            <option key={s.id} value={s.id}>
-                                {s.name}
-                            </option>
-                        ))}
-                    </select>
+                            <select
+                                value={filterSubject}
+                                onChange={(e) =>
+                                    setFilterSubject(e.target.value)
+                                }
+                                className="cursor-pointer w-full bg-[#1a1a1a] border border-white/10 hover:border-white/20 focus:border-blue-500 rounded-2xl px-4 py-3 text-sm outline-none transition-colors appearance-none"
+                            >
+                                <option value="all">📚 ทุกรายวิชา</option>
 
-                    <select
-                        className="cursor-pointer bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 ring-blue-500"
-                        onChange={(e) =>
-                            setFilterType(e.target.value)
-                        }
-                    >
-                        <option value="all">ทุกประเภท</option>
-                        <option value="VIDEO">🎬 วิดีโอ</option>
-                        <option value="DOCUMENT">📄 เอกสาร</option>
-                        <option value="LINK">🔗 ลิงก์ภายนอก</option>
-                        <option value="NOTE">📝 โน้ตสรุป</option>
-                    </select>
+                                {subjects.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.name}
+                                    </option>
+                                ))}
+                            </select>
+
+                            <div className="pointer-events-none absolute right-4 top-[38px] text-neutral-500">
+                                ▼
+                            </div>
+                        </div>
+
+                        <div className="relative flex-1 min-w-0">
+                            <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-bold mb-1.5 block">
+                                ประเภท
+                            </label>
+
+                            <select
+                                value={filterType}
+                                onChange={(e) =>
+                                    setFilterType(e.target.value)
+                                }
+                                className="cursor-pointer w-full bg-[#1a1a1a] border border-white/10 hover:border-white/20 focus:border-blue-500 rounded-2xl px-4 py-3 text-sm outline-none transition-colors appearance-none"
+                            >
+                                <option value="all">
+                                    🗂️ ทุกประเภท
+                                </option>
+
+                                <option value="VIDEO">
+                                    🎬 วิดีโอ
+                                </option>
+
+                                <option value="DOCUMENT">
+                                    📄 เอกสาร
+                                </option>
+
+                                <option value="LINK">
+                                    🔗 ลิงก์ภายนอก
+                                </option>
+
+                                <option value="NOTE">
+                                    📝 โน้ตสรุป
+                                </option>
+                            </select>
+
+                            <div className="pointer-events-none absolute right-4 top-[38px] text-neutral-500">
+                                ▼
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Action */}
+                    <div className="flex items-end">
+                        <button
+                            onClick={openModal}
+                            className="cursor-pointer w-full sm:w-auto bg-white text-black px-5 py-3 rounded-2xl font-bold text-sm hover:bg-neutral-200 active:scale-[0.98] transition-all shadow-lg shadow-white/5"
+                        >
+                            + เพิ่มแหล่งใหม่
+                        </button>
+                    </div>
                 </div>
-
-                <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="cursor-pointer bg-white text-black px-5 py-2 rounded-full font-bold text-sm hover:bg-neutral-200 transition-colors"
-                >
-                    + เพิ่มทรัพยากรใหม่
-                </button>
             </div>
 
             {/* Resources Grid */}
@@ -380,11 +439,52 @@ export default function ResourceClient({
             </div>
 
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-[#111] border border-white/10 w-full max-w-md rounded-3xl p-8">
-                        <h2 className="text-2xl font-bold mb-6">
-                            เพิ่มเข้าคลังแสง 🗂️
-                        </h2>
+                <div
+                    onClick={closeModal}
+                    className={`fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md transition-all duration-300 ${modalVisible
+                        ? "bg-black/60 opacity-100"
+                        : "bg-black/0 opacity-0"
+                        }`}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        className={`bg-[#111]/95 border border-white/10 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 ${modalVisible
+                            ? "scale-100 translate-y-0 opacity-100"
+                            : "scale-95 translate-y-4 opacity-0"
+                            }`}
+                    >
+                        {/* Header */}
+                        <div className="px-6 py-5 border-b border-white/5 flex items-start justify-between">
+                            <div>
+                                <h2 className="text-xl font-bold text-white">
+                                    เพิ่มเข้าคลังแสง 🗂️
+                                </h2>
+
+                                <p className="text-sm text-neutral-500 mt-1">
+                                    เพิ่มสื่อการเรียน เอกสาร หรือโน้ตสรุปใหม่
+                                </p>
+                            </div>
+
+                            <button
+                                onClick={closeModal}
+                                className="cursor-pointer text-neutral-600 hover:text-white transition-colors p-1"
+                            >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                >
+                                    <path d="M18 6L6 18" />
+                                    <path d="M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
 
                         <form
                             action={async (formData) => {
@@ -406,174 +506,179 @@ export default function ResourceClient({
                                     type: false,
                                 })
 
-                                setIsModalOpen(false)
+                                closeModal()
                             }}
-                            className="space-y-4"
+                            className="flex flex-col"
                         >
-                            <div>
-                                <label className="block text-xs text-neutral-500 mb-1 uppercase font-bold">
-                                    รายวิชา
-                                </label>
-
-                                <select
-                                    name="subjectId"
-                                    value={form.subjectId}
-                                    onChange={(e) => {
-                                        setForm({
-                                            ...form,
-                                            subjectId: e.target.value,
-                                        })
-
-                                        if (e.target.value) {
-                                            setErrors({
-                                                ...errors,
-                                                subjectId: false,
-                                            })
-                                        }
-                                    }}
-                                    className={`cursor-pointer w-full bg-[#1a1a1a] border rounded-xl p-3 focus:outline-none focus:ring-2 ring-blue-500 ${errors.subjectId
-                                        ? 'border-red-500'
-                                        : 'border-white/10'
-                                        }`}
-                                >
-                                    <option disabled value="">
-                                        -- เลือกรายวิชา --
-                                    </option>
-
-                                    {subjects.map((s) => (
-                                        <option
-                                            key={s.id}
-                                            value={s.id}
-                                        >
-                                            {s.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                {errors.subjectId && (
-                                    <p className="text-red-500 text-xs mt-1">
-                                        กรุณาเลือกรายวิชา
-                                    </p>
-                                )}
-                            </div>
-
-                            <div>
-                                <label className="block text-xs text-neutral-500 mb-1 uppercase font-bold">
-                                    หัวข้อ/ชื่อไฟล์
-                                </label>
-
-                                <input
-                                    name="title"
-                                    value={form.title}
-                                    onChange={(e) => {
-                                        setForm({
-                                            ...form,
-                                            title: e.target.value,
-                                        })
-
-                                        if (e.target.value.trim()) {
-                                            setErrors({
-                                                ...errors,
-                                                title: false,
-                                            })
-                                        }
-                                    }}
-                                    className={`w-full bg-[#1a1a1a] border rounded-xl p-3 ${errors.title
-                                        ? 'border-red-500'
-                                        : 'border-white/10'
-                                        }`}
-                                    placeholder="เช่น สรุปฟิสิกส์นิวเคลียร์"
-                                />
-                                {errors.title && (
-                                    <p className="text-red-500 text-xs mt-1">
-                                        กรุณากรอกหัวข้อ
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
+                            {/* Body */}
+                            <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
                                 <div>
-                                    <label className="block text-xs text-neutral-500 mb-1 uppercase font-bold">
-                                        ประเภท
+                                    <label className="block text-[11px] text-neutral-500 mb-2 uppercase tracking-wider font-bold">
+                                        รายวิชา
                                     </label>
 
                                     <select
-                                        name="type"
-                                        value={form.type}
+                                        name="subjectId"
+                                        value={form.subjectId}
                                         onChange={(e) => {
                                             setForm({
                                                 ...form,
-                                                type: e.target.value,
+                                                subjectId: e.target.value,
                                             })
 
                                             if (e.target.value) {
                                                 setErrors({
                                                     ...errors,
-                                                    type: false,
+                                                    subjectId: false,
                                                 })
                                             }
                                         }}
-                                        className={`cursor-pointer w-full bg-[#1a1a1a] border rounded-xl p-3 ${errors.type
+                                        className={`cursor-pointer w-full bg-[#1a1a1a] border rounded-2xl px-4 py-3 text-sm outline-none transition-colors ${errors.subjectId
                                             ? 'border-red-500'
-                                            : 'border-white/10'
+                                            : 'border-white/10 focus:border-blue-500'
                                             }`}
                                     >
-                                        <option value="">-- เลือกประเภท --</option>
-                                        <option value="VIDEO">
-                                            🎬 วิดีโอ
+                                        <option disabled value="">
+                                            -- เลือกรายวิชา --
                                         </option>
 
-                                        <option value="DOCUMENT">
-                                            📄 เอกสาร
-                                        </option>
-
-                                        <option value="NOTE">
-                                            📝 โน๊ตสรุป
-                                        </option>
-
-                                        <option value="LINK">
-                                            🔗 ลิงก์ภายนอก
-                                        </option>
+                                        {subjects.map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                                {s.name}
+                                            </option>
+                                        ))}
                                     </select>
-                                    {errors.type && (
-                                        <p className="text-red-500 text-xs mt-1">
-                                            กรุณาเลือกประเภท
+
+                                    {errors.subjectId && (
+                                        <p className="text-red-500 text-xs mt-1.5">
+                                            กรุณาเลือกรายวิชา
                                         </p>
                                     )}
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs text-neutral-500 mb-1 uppercase font-bold">
-                                        URL (ถ้ามี)
+                                    <label className="block text-[11px] text-neutral-500 mb-2 uppercase tracking-wider font-bold">
+                                        หัวข้อ / ชื่อไฟล์
                                     </label>
 
                                     <input
-                                        name="url"
-                                        className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl p-3"
-                                        placeholder="https://..."
+                                        name="title"
+                                        value={form.title}
+                                        onChange={(e) => {
+                                            setForm({
+                                                ...form,
+                                                title: e.target.value,
+                                            })
+
+                                            if (e.target.value.trim()) {
+                                                setErrors({
+                                                    ...errors,
+                                                    title: false,
+                                                })
+                                            }
+                                        }}
+                                        className={`w-full bg-[#1a1a1a] border rounded-2xl px-4 py-3 text-sm outline-none transition-colors ${errors.title
+                                            ? 'border-red-500'
+                                            : 'border-white/10 focus:border-blue-500'
+                                            }`}
+                                        placeholder="เช่น สรุปฟิสิกส์นิวเคลียร์"
+                                    />
+
+                                    {errors.title && (
+                                        <p className="text-red-500 text-xs mt-1.5">
+                                            กรุณากรอกหัวข้อ
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[11px] text-neutral-500 mb-2 uppercase tracking-wider font-bold">
+                                            ประเภท
+                                        </label>
+
+                                        <select
+                                            name="type"
+                                            value={form.type}
+                                            onChange={(e) => {
+                                                setForm({
+                                                    ...form,
+                                                    type: e.target.value,
+                                                })
+
+                                                if (e.target.value) {
+                                                    setErrors({
+                                                        ...errors,
+                                                        type: false,
+                                                    })
+                                                }
+                                            }}
+                                            className={`cursor-pointer w-full bg-[#1a1a1a] border rounded-2xl px-4 py-3 text-sm outline-none transition-colors ${errors.type
+                                                ? 'border-red-500'
+                                                : 'border-white/10 focus:border-blue-500'
+                                                }`}
+                                        >
+                                            <option value="">-- เลือกประเภท --</option>
+
+                                            <option value="VIDEO">
+                                                🎬 วิดีโอ
+                                            </option>
+
+                                            <option value="DOCUMENT">
+                                                📄 เอกสาร
+                                            </option>
+
+                                            <option value="NOTE">
+                                                📝 โน๊ตสรุป
+                                            </option>
+
+                                            <option value="LINK">
+                                                🔗 ลิงก์ภายนอก
+                                            </option>
+                                        </select>
+
+                                        {errors.type && (
+                                            <p className="text-red-500 text-xs mt-1.5">
+                                                กรุณาเลือกประเภท
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] text-neutral-500 mb-2 uppercase tracking-wider font-bold">
+                                            URL (ถ้ามี)
+                                        </label>
+
+                                        <input
+                                            name="url"
+                                            defaultValue={form.url}
+                                            className="w-full bg-[#1a1a1a] border border-white/10 rounded-2xl px-4 py-3 text-sm outline-none focus:border-blue-500 transition-colors"
+                                            placeholder="https://..."
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] text-neutral-500 mb-2 uppercase tracking-wider font-bold">
+                                        รายละเอียด / เนื้อหา
+                                    </label>
+
+                                    <textarea
+                                        name="content"
+                                        rows={4}
+                                        defaultValue={form.content}
+                                        className="w-full bg-[#1a1a1a] border border-white/10 rounded-2xl px-4 py-3 text-sm outline-none focus:border-blue-500 transition-colors resize-none"
+                                        placeholder="จดโน้ตย่อตรงนี้..."
                                     />
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs text-neutral-500 mb-1 uppercase font-bold">
-                                    รายละเอียด/เนื้อหา
-                                </label>
-
-                                <textarea
-                                    name="content"
-                                    rows={3}
-                                    className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl p-3"
-                                    placeholder="จดโน้ตย่อตรงนี้..."
-                                ></textarea>
-                            </div>
-
-                            <div className="flex gap-3 pt-4">
+                            {/* Footer */}
+                            <div className="border-t border-white/5 px-6 py-5 flex gap-3 bg-white/2">
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        setIsModalOpen(false)
-                                    }
-                                    className="cursor-pointer flex-1 px-4 py-3 rounded-xl border border-white/10 hover:bg-white/5 transition-colors"
+                                    onClick={closeModal}
+                                    className="cursor-pointer flex-1 px-4 py-3 rounded-2xl border border-white/10 text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
                                 >
                                     ยกเลิก
                                 </button>
@@ -581,9 +686,9 @@ export default function ResourceClient({
                                 <button
                                     type="submit"
                                     disabled={!isFormValid}
-                                    className={`flex-1 px-4 py-3 rounded-xl font-bold transition-colors ${isFormValid
-                                            ? 'cursor-pointer bg-blue-600 hover:bg-blue-500'
-                                            : 'cursor-not-allowed bg-neutral-700 text-neutral-400'
+                                    className={`flex-1 px-4 py-3 rounded-2xl font-bold transition-all ${isFormValid
+                                        ? 'cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white'
+                                        : 'cursor-not-allowed bg-neutral-800 text-neutral-500'
                                         }`}
                                 >
                                     บันทึก

@@ -83,10 +83,6 @@ export default function Sidebar() {
                     })}
                 </nav>
 
-                {/* Footer */}
-                <div className="p-5 border-t border-white/6">
-                    <p className="text-[11px] text-neutral-700 leading-relaxed font-medium">มุ่งมั่น · ตั้งใจ · สำเร็จ</p>
-                </div>
             </aside>
 
             {/* ════ Mobile top bar ════ */}
