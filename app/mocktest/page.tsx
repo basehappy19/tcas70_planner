@@ -6,8 +6,20 @@ export default async function MockTestPage() {
     const subjects = await prisma.subject.findMany({ orderBy: { name: "asc" } });
 
     const history = await prisma.mockTest.findMany({
-        include: { subject: true },
-        orderBy: { testDate: "desc" },
+        include: {
+            subject: true,
+            snapshots: {
+                include: {
+                    images: true,
+                },
+                orderBy: {
+                    createdAt: "asc",
+                },
+            },
+        },
+        orderBy: {
+            testDate: "desc",
+        },
     });
 
     const rawStats = await prisma.mockTest.groupBy({
@@ -40,10 +52,10 @@ export default async function MockTestPage() {
                     <h1 className="text-2xl font-black text-white tracking-tight">ระบบจำลองสอบ</h1>
                     <p className="text-neutral-500 text-sm mt-1">จับเวลา · บันทึกคะแนน · วิเคราะห์ผล</p>
                 </div>
-                <MockTestClient 
-                    subjects={subjects} 
-                    history={history} 
-                    stats={stats} 
+                <MockTestClient
+                    subjects={subjects}
+                    history={history}
+                    stats={stats}
                     initialActiveTest={activeTest}
                 />
             </div>

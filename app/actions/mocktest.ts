@@ -1,4 +1,4 @@
-'use server'
+"use server";
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
@@ -20,30 +20,26 @@ export type ActiveTestState = {
 async function createSnapshot(
     activeTestId: number,
     type: "START" | "PAUSE" | "RESUME" | "SCORING" | "NOTE",
-    note?: string
+    note?: string,
 ) {
     const active = await prisma.activeMockTest.findUnique({
-        where: {
-            id: activeTestId
-        }
+        where: { id: activeTestId },
     });
 
     if (!active) return null;
 
     return await prisma.mockTestSnapshot.create({
         data: {
-            activeTestId,
+            activeMockTestId: active.id,
+
             type,
 
             timeSpent: active.timeSpent,
 
-            remaining: Math.max(
-                0,
-                active.totalTime - active.timeSpent
-            ),
+            remaining: Math.max(0, active.totalTime - active.timeSpent),
 
-            note,
-        }
+            note: note ?? null,
+        },
     });
 }
 
@@ -58,17 +54,11 @@ export async function getActiveTestState(): Promise<ActiveTestState> {
 
     let currentTimeSpent = active.timeSpent;
 
-    if (
-        active.status === "RUNNING" &&
-        active.lastStartedAt
-    ) {
+    if (active.status === "RUNNING" && active.lastStartedAt) {
         const now = new Date();
 
         const diffSeconds = Math.floor(
-            (
-                now.getTime() -
-                active.lastStartedAt.getTime()
-            ) / 1000
+            (now.getTime() - active.lastStartedAt.getTime()) / 1000,
         );
 
         currentTimeSpent += diffSeconds;
@@ -76,10 +66,7 @@ export async function getActiveTestState(): Promise<ActiveTestState> {
 
     let status = active.status;
 
-    if (
-        status === "RUNNING" &&
-        currentTimeSpent >= active.totalTime
-    ) {
+    if (status === "RUNNING" && currentTimeSpent >= active.totalTime) {
         status = "SCORING";
         currentTimeSpent = active.totalTime;
     }
@@ -89,10 +76,7 @@ export async function getActiveTestState(): Promise<ActiveTestState> {
         subjectId: active.subjectId,
         totalTime: active.totalTime,
         timeSpent: currentTimeSpent,
-        status: status as
-            | "RUNNING"
-            | "PAUSED"
-            | "SCORING",
+        status: status as "RUNNING" | "PAUSED" | "SCORING",
         inputHours: active.inputHours,
         inputMinutes: active.inputMinutes,
     };
@@ -123,20 +107,17 @@ export async function startMockTest(data: {
 
             lastStartedAt: new Date(),
 
-            timeSpent: 0
-        }
+            timeSpent: 0,
+        },
     });
 
     // AUTO SNAPSHOT
-    await createSnapshot(
-        created.id,
-        "START"
-    );
+    await createSnapshot(created.id, "START");
 
     revalidatePath("/mocktest");
 
     return {
-        success: true
+        success: true,
     };
 }
 
@@ -144,87 +125,62 @@ export async function startMockTest(data: {
    PAUSE / RESUME
 ════════════════════════════════════════ */
 
-export async function togglePauseResumeMockTest(
-    action: "PAUSE" | "RESUME"
-) {
-    const active =
-        await prisma.activeMockTest.findFirst();
+export async function togglePauseResumeMockTest(action: "PAUSE" | "RESUME") {
+    const active = await prisma.activeMockTest.findFirst();
 
     if (!active) {
         return {
-            success: false
+            success: false,
         };
     }
 
     /* ───── PAUSE ───── */
 
-    if (
-        action === "PAUSE" &&
-        active.status === "RUNNING"
-    ) {
+    if (action === "PAUSE" && active.status === "RUNNING") {
         const now = new Date();
 
-        const diff =
-            active.lastStartedAt
-                ? Math.floor(
-                    (
-                        now.getTime() -
-                        active.lastStartedAt.getTime()
-                    ) / 1000
-                )
-                : 0;
+        const diff = active.lastStartedAt
+            ? Math.floor(
+                  (now.getTime() - active.lastStartedAt.getTime()) / 1000,
+              )
+            : 0;
 
-        const updated =
-            await prisma.activeMockTest.update({
-                where: {
-                    id: active.id
-                },
-                data: {
-                    status: "PAUSED",
+        const updated = await prisma.activeMockTest.update({
+            where: {
+                id: active.id,
+            },
+            data: {
+                status: "PAUSED",
 
-                    timeSpent:
-                        active.timeSpent + diff,
+                timeSpent: active.timeSpent + diff,
 
-                    lastStartedAt: null
-                }
-            });
+                lastStartedAt: null,
+            },
+        });
 
         // AUTO SNAPSHOT
-        await createSnapshot(
-            updated.id,
-            "PAUSE"
-        );
-    }
+        await createSnapshot(updated.id, "PAUSE");
+    } else if (action === "RESUME" && active.status === "PAUSED") {
+        /* ───── RESUME ───── */
+        const updated = await prisma.activeMockTest.update({
+            where: {
+                id: active.id,
+            },
+            data: {
+                status: "RUNNING",
 
-    /* ───── RESUME ───── */
-
-    else if (
-        action === "RESUME" &&
-        active.status === "PAUSED"
-    ) {
-        const updated =
-            await prisma.activeMockTest.update({
-                where: {
-                    id: active.id
-                },
-                data: {
-                    status: "RUNNING",
-
-                    lastStartedAt: new Date()
-                }
-            });
+                lastStartedAt: new Date(),
+            },
+        });
 
         // AUTO SNAPSHOT
-        await createSnapshot(
-            updated.id,
-            "RESUME"
-        );
+        await createSnapshot(updated.id, "RESUME");
     }
 
     revalidatePath("/mocktest");
 
     return {
-        success: true
+        success: true,
     };
 }
 
@@ -233,61 +189,48 @@ export async function togglePauseResumeMockTest(
 ════════════════════════════════════════ */
 
 export async function enterScoringPhase() {
-    const active =
-        await prisma.activeMockTest.findFirst();
+    const active = await prisma.activeMockTest.findFirst();
 
     if (!active) {
         return {
-            success: false
+            success: false,
         };
     }
 
     let finalTimeSpent = active.timeSpent;
 
-    if (
-        active.status === "RUNNING" &&
-        active.lastStartedAt
-    ) {
+    if (active.status === "RUNNING" && active.lastStartedAt) {
         const now = new Date();
 
         finalTimeSpent += Math.floor(
-            (
-                now.getTime() -
-                active.lastStartedAt.getTime()
-            ) / 1000
+            (now.getTime() - active.lastStartedAt.getTime()) / 1000,
         );
     }
 
-    if (
-        finalTimeSpent > active.totalTime
-    ) {
+    if (finalTimeSpent > active.totalTime) {
         finalTimeSpent = active.totalTime;
     }
 
-    const updated =
-        await prisma.activeMockTest.update({
-            where: {
-                id: active.id
-            },
-            data: {
-                status: "SCORING",
+    const updated = await prisma.activeMockTest.update({
+        where: {
+            id: active.id,
+        },
+        data: {
+            status: "SCORING",
 
-                timeSpent: finalTimeSpent,
+            timeSpent: finalTimeSpent,
 
-                lastStartedAt: null
-            }
-        });
+            lastStartedAt: null,
+        },
+    });
 
     // AUTO SNAPSHOT
-    await createSnapshot(
-        updated.id,
-        "SCORING"
-    );
+    await createSnapshot(updated.id, "SCORING");
 
     revalidatePath("/mocktest");
 
     return {
-        success: true
+        success: true,
     };
 }
 
@@ -301,7 +244,7 @@ export async function cancelMockTest() {
     revalidatePath("/mocktest");
 
     return {
-        success: true
+        success: true,
     };
 }
 
@@ -309,42 +252,29 @@ export async function cancelMockTest() {
    ADD NOTE
 ════════════════════════════════════════ */
 
-export async function addMockTestNote(data: {
-    note: string;
-}) {
+export async function addMockTestNote(data: { note: string }) {
     try {
-        const active =
-            await prisma.activeMockTest.findFirst();
+        const active = await prisma.activeMockTest.findFirst();
 
         if (!active) {
             return {
                 success: false,
-                message:
-                    "ไม่มีการสอบที่กำลังทำอยู่"
+                message: "ไม่มีการสอบที่กำลังทำอยู่",
             };
         }
 
-        const snapshot =
-            await createSnapshot(
-                active.id,
-                "NOTE",
-                data.note
-            );
+        const snapshot = await createSnapshot(active.id, "NOTE", data.note);
 
         return {
             success: true,
-            snapshotId: snapshot?.id
+            snapshotId: snapshot?.id,
         };
     } catch (error) {
-        console.error(
-            "Error adding note:",
-            error
-        );
+        console.error("Error adding note:", error);
 
         return {
             success: false,
-            message:
-                "บันทึกโน้ตไม่สำเร็จ"
+            message: "บันทึกโน้ตไม่สำเร็จ",
         };
     }
 }
@@ -365,24 +295,19 @@ export async function addMockTestNoteImage(data: {
 
                 url: data.url,
 
-                caption:
-                    data.caption || null
-            }
+                caption: data.caption || null,
+            },
         });
 
         return {
-            success: true
+            success: true,
         };
     } catch (error) {
-        console.error(
-            "Error adding note image:",
-            error
-        );
+        console.error("Error adding note image:", error);
 
         return {
             success: false,
-            message:
-                "เพิ่มรูปไม่สำเร็จ"
+            message: "เพิ่มรูปไม่สำเร็จ",
         };
     }
 }
@@ -391,25 +316,24 @@ export async function addMockTestNoteImage(data: {
    SAVE FINAL TEST RESULT
 ════════════════════════════════════════ */
 
-export async function addMockTest(
-    formData: FormData
-) {
+export async function addMockTest(formData: FormData) {
     try {
-        const subjectId = parseInt(
-            formData.get("subjectId") as string
-        );
+        const subjectId = parseInt(formData.get("subjectId") as string);
 
-        const score = parseFloat(
-            formData.get("score") as string
-        );
+        const score = parseFloat(formData.get("score") as string);
 
-        const timeSpent = parseInt(
-            formData.get("timeSpent") as string
-        );
+        const timeSpent = parseInt(formData.get("timeSpent") as string);
 
-        const notes = formData.get(
-            "notes"
-        ) as string;
+        const notes = formData.get("notes") as string;
+        const active = await prisma.activeMockTest.findFirst();
+
+        if (active) {
+            await prisma.activeMockTest.delete({
+                where: {
+                    id: active.id,
+                },
+            });
+        }
 
         await prisma.mockTest.create({
             data: {
@@ -420,26 +344,20 @@ export async function addMockTest(
                 timeSpent,
 
                 notes: notes || null,
-            }
+            },
         });
-
-        await prisma.activeMockTest.deleteMany();
 
         revalidatePath("/mocktest");
 
         return {
-            success: true
+            success: true,
         };
     } catch (error) {
-        console.error(
-            "Error adding mock test:",
-            error
-        );
+        console.error("Error adding mock test:", error);
 
         return {
             success: false,
-            message:
-                "บันทึกข้อมูลไม่สำเร็จ"
+            message: "บันทึกข้อมูลไม่สำเร็จ",
         };
     }
 }

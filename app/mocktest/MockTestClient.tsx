@@ -23,17 +23,41 @@ dayjs.locale("th");
    TYPES
 ══════════════════════════════════════ */
 type Subject = { id: number; name: string; fullScore: number };
-type TestHistory = { id: number; score: number; timeSpent: number; testDate: Date; notes: string | null; subject: Subject };
+type SnapshotImage = {
+    id: number;
+    url: string;
+    caption: string | null;
+};
+
+type SnapshotItem = {
+    id: number;
+    type: "START" | "PAUSE" | "RESUME" | "SCORING" | "NOTE";
+    note: string | null;
+    timeSpent: number;
+    remaining: number;
+    createdAt: Date;
+    images: SnapshotImage[];
+};
+
+type TestHistory = {
+    id: number;
+    score: number;
+    timeSpent: number;
+    testDate: Date;
+    notes: string | null;
+    subject: Subject;
+    snapshots: SnapshotItem[];
+};
 type TestStat = { subjectId: number; subjectName: string; fullScore: number; min: number; max: number; avg: number; count: number };
 type TestPhase = "setup" | "running" | "paused" | "scoring";
 
-/** รูปที่เลือกในเครื่อง ยังไม่ได้ upload */
+
 type LocalImage = {
-    id: string;                                      // crypto.randomUUID()
+    id: string;
     file: File;
-    preview: string;                                      // object URL
+    preview: string;
     status: "pending" | "uploading" | "done" | "error";
-    driveUrl?: string;                                     // เติมหลัง upload สำเร็จ
+    driveUrl?: string;
 };
 
 interface Props {
@@ -122,35 +146,69 @@ export default function MockTestClient({ subjects, history, stats, initialActive
     const [timeSpent, setTimeSpent] = useState(initialActiveTest?.timeSpent ?? 0);
     const [score, setScore] = useState("");
     const [notes, setNotes] = useState("");
-    const [activeTab, setActiveTab] = useState<"history" | "stats">("history");
+    const [activeTab, setActiveTab] =
+        useState<"history" | "stats">("history");
     const [showNotes, setShowNotes] = useState(false);
     const [quickNote, setQuickNote] = useState("");
     const [localImages, setLocalImages] = useState<LocalImage[]>([]);
     const [isSavingNote, setIsSavingNote] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
+    const [isFinished, setIsFinished] =
+        useState(false);
     const subject = subjects.find(s => s.id === Number(selectedSubject));
     const timeLeft = Math.max(0, totalTime - timeSpent);
     const scorePct = subject && score ? (parseFloat(score) / subject.fullScore) * 100 : 0;
+    const [expandedHistory, setExpandedHistory] = useState<number | null>(null);
 
     useEffect(() => () => { localImages.forEach(img => URL.revokeObjectURL(img.preview)); }, []);
 
     useEffect(() => {
-        const id = setInterval(async () => {
-            const server = await getActiveTestState();
-            if (!server) { if (phase !== "setup") setPhase("setup"); return; }
-            const nextPhase = server.status.toLowerCase() as TestPhase;
-            if (nextPhase !== phase) setPhase(nextPhase);
-            setSelectedSubject(server.subjectId);
-            setInputHours(server.inputHours);
-            setInputMinutes(server.inputMinutes);
-            setTotalTime(server.totalTime);
-            if (Math.abs(server.timeSpent - timeSpent) > 2) setTimeSpent(server.timeSpent);
-        }, 3000);
-        return () => clearInterval(id);
-    }, [phase, timeSpent]);
 
-    /* ── Local countdown ── */
+        if (isFinished) return;
+
+        const id = setInterval(async () => {
+
+            const server =
+                await getActiveTestState();
+
+            if (!server) {
+
+                if (phase !== "setup") {
+                    setPhase("setup");
+                }
+
+                return;
+            }
+
+            const nextPhase =
+                server.status.toLowerCase() as TestPhase;
+
+            if (nextPhase !== phase) {
+                setPhase(nextPhase);
+            }
+
+            setSelectedSubject(server.subjectId);
+
+            setInputHours(server.inputHours);
+
+            setInputMinutes(server.inputMinutes);
+
+            setTotalTime(server.totalTime);
+
+            if (
+                Math.abs(
+                    server.timeSpent - timeSpent
+                ) > 2
+            ) {
+                setTimeSpent(server.timeSpent);
+            }
+
+        }, 3000);
+
+        return () => clearInterval(id);
+
+    }, [phase, timeSpent, isFinished]);
+
     useEffect(() => {
         if (phase !== "running") return;
         const id = setInterval(() => {
@@ -163,7 +221,6 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         return () => clearInterval(id);
     }, [phase, totalTime]);
 
-    /* ── Timer actions ── */
     const handleStart = async () => {
         const t = inputHours * 3600 + inputMinutes * 60;
         if (!selectedSubject || t <= 0) return;
@@ -193,12 +250,25 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         fd.append("timeSpent", String(Math.ceil(timeSpent / 60)));
         fd.append("notes", notes);
         const res = await addMockTest(fd);
-        if (res.success) { setPhase("setup"); setSelectedSubject(""); setScore(""); setNotes(""); }
+        if (res.success) {
+
+            setPhase("setup");
+
+            setSelectedSubject("");
+
+            setScore("");
+
+            setNotes("");
+
+            setTimeSpent(0);
+
+            setTotalTime(0);
+            setIsFinished(true);
+        }
         else alert(res.message);
         setIsSubmitting(false);
     };
 
-    /* ── Image: เลือกรูป → สร้าง preview ทันที (ยังไม่ upload) ── */
     const handlePickImages = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files) return;
@@ -220,7 +290,6 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         });
     };
 
-    /* ── กดบันทึก: upload รูป pending ทั้งหมด ── */
     const handleSaveNote = async () => {
 
         if (!quickNote.trim() && localImages.length === 0) {
@@ -355,9 +424,52 @@ export default function MockTestClient({ subjects, history, stats, initialActive
     const pendingCount = localImages.filter(i => i.status === "pending").length;
     const uploadingCount = localImages.filter(i => i.status === "uploading").length;
 
-    /* ══════════════════════════════════════
-       RENDER
-    ══════════════════════════════════════ */
+    function snapshotMeta(type: SnapshotItem["type"]) {
+        switch (type) {
+            case "START":
+                return {
+                    label: "เริ่มทำข้อสอบ",
+                    icon: "▶",
+                    color: "emerald",
+                };
+
+            case "PAUSE":
+                return {
+                    label: "พักการทำข้อสอบ",
+                    icon: "⏸",
+                    color: "amber",
+                };
+
+            case "RESUME":
+                return {
+                    label: "กลับมาทำต่อ",
+                    icon: "⏯",
+                    color: "sky",
+                };
+
+            case "SCORING":
+                return {
+                    label: "ส่งข้อสอบ",
+                    icon: "✓",
+                    color: "rose",
+                };
+
+            case "NOTE":
+                return {
+                    label: "โน้ตระหว่างทำ",
+                    icon: "✎",
+                    color: "violet",
+                };
+
+            default:
+                return {
+                    label: "กิจกรรม",
+                    icon: "•",
+                    color: "emerald",
+                };
+        }
+    }
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
@@ -386,15 +498,28 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                         { value: inputHours, onChange: setInputHours, max: 10, label: "ชั่วโมง" },
                                         { value: inputMinutes, onChange: setInputMinutes, max: 59, label: "นาที" },
                                     ] as const).map(({ value, onChange, max, label }, i) => (
-                                        <>
-                                            {i === 1 && <span key="sep" className="text-neutral-600 font-bold pb-4">:</span>}
-                                            <div key={label} className="relative flex-1">
-                                                <input type="number" min="0" max={max} value={value}
+                                        <div key={label} className="flex items-center gap-2 flex-1">
+                                            {i === 1 && (
+                                                <span className="text-neutral-600 font-bold pb-4">
+                                                    :
+                                                </span>
+                                            )}
+
+                                            <div className="relative flex-1">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max={max}
+                                                    value={value}
                                                     onChange={e => onChange(parseInt(e.target.value) || 0)}
-                                                    className="w-full bg-neutral-950 text-white text-center text-lg font-bold border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3 py-3 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none cursor-pointer" />
-                                                <span className="absolute bottom-1.5 inset-x-0 text-center text-[10px] text-neutral-600 pointer-events-none">{label}</span>
+                                                    className="w-full bg-neutral-950 text-white text-center text-lg font-bold border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3 py-3 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none cursor-pointer"
+                                                />
+
+                                                <span className="absolute bottom-1.5 inset-x-0 text-center text-[10px] text-neutral-600 pointer-events-none">
+                                                    {label}
+                                                </span>
                                             </div>
-                                        </>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
@@ -535,35 +660,93 @@ export default function MockTestClient({ subjects, history, stats, initialActive
 
                 <div className="p-5">
                     {activeTab === "history" && (
-                        <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-                            {history.length > 0 ? history.map(item => {
-                                const p = (item.score / item.subject.fullScore) * 100;
-                                return (
-                                    <div key={item.id} className={`border rounded-xl p-4 hover:border-neutral-700 transition-colors ${pctBorder(p)}`}>
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-semibold text-neutral-200">{item.subject.name}</p>
-                                                <p className="text-[11px] text-neutral-600 font-mono mt-0.5">
-                                                    {dayjs(item.testDate).format("D MMM BBBB · h:mm A")} · {item.timeSpent} นาที
-                                                </p>
-                                                {item.notes && <p className="text-xs text-neutral-500 mt-2 border-l-2 border-neutral-700 pl-2 italic line-clamp-2">{item.notes}</p>}
+                        <div className="space-y-3 max-h-150 overflow-y-auto pr-1">
+                            {history.length > 0 ? (
+                                history.map(item => {
+
+                                    const p = (item.score / item.subject.fullScore) * 100;
+                                    const expanded = expandedHistory === item.id;
+
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            className={`border rounded-xl p-4 hover:border-neutral-700 transition-colors ${pctBorder(p)}`}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-semibold text-neutral-200">
+                                                        {item.subject.name}
+                                                    </p>
+
+                                                    <p className="text-[11px] text-neutral-600 font-mono mt-0.5">
+                                                        {dayjs(item.testDate).format("D MMM BBBB · h:mm A")} · {item.timeSpent} นาที
+                                                    </p>
+
+                                                    {item.notes && (
+                                                        <p className="text-xs text-neutral-500 mt-2 border-l-2 border-neutral-700 pl-2 italic line-clamp-2">
+                                                            {item.notes}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                <div className="text-right shrink-0">
+                                                    <span className={`text-2xl font-black tabular-nums ${pctColor(p)}`}>
+                                                        {item.score}
+                                                    </span>
+
+                                                    <p className="text-[10px] text-neutral-600 mt-0.5">
+                                                        / {item.subject.fullScore}
+                                                    </p>
+
+                                                    <p className={`text-[10px] font-bold mt-0.5 ${pctColor(p)}`}>
+                                                        {p.toFixed(0)}%
+                                                    </p>
+                                                </div>
+
                                             </div>
-                                            <div className="text-right shrink-0">
-                                                <span className={`text-2xl font-black tabular-nums ${pctColor(p)}`}>{item.score}</span>
-                                                <p className="text-[10px] text-neutral-600 mt-0.5">/ {item.subject.fullScore}</p>
-                                                <p className={`text-[10px] font-bold mt-0.5 ${pctColor(p)}`}>{p.toFixed(0)}%</p>
-                                            </div>
+
+                                            <ScoreBar
+                                                score={item.score}
+                                                fullScore={item.subject.fullScore}
+                                            />
+
+                                            <button
+                                                onClick={() =>
+                                                    setExpandedHistory(
+                                                        expanded ? null : item.id
+                                                    )
+                                                }
+                                                className="mt-3 text-xs text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                                            >
+                                                {expanded
+                                                    ? "ซ่อนกิจกรรม ▲"
+                                                    : `ดูกิจกรรม (${item.snapshots.length}) ▼`}
+                                            </button>
+
+                                            {expanded && item.snapshots.length > 0 && (
+                                                <div className="mt-4 space-y-3 border-t border-neutral-800 pt-4">
+
+                                                    {/* snapshots */}
+
+                                                </div>
+                                            )}
                                         </div>
-                                        <ScoreBar score={item.score} fullScore={item.subject.fullScore} />
-                                    </div>
-                                );
-                            }) : (
+                                    );
+                                })
+                            ) : (
                                 <div className="text-center py-16">
-                                    <p className="text-sm text-neutral-600">ยังไม่มีประวัติ</p>
-                                    <p className="text-xs text-neutral-700 mt-1">เริ่มจำลองสอบครั้งแรกได้เลย</p>
+                                    <p className="text-sm text-neutral-600">
+                                        ยังไม่มีประวัติ
+                                    </p>
+
+                                    <p className="text-xs text-neutral-700 mt-1">
+                                        เริ่มจำลองสอบครั้งแรกได้เลย
+                                    </p>
                                 </div>
                             )}
                         </div>
+
                     )}
 
                     {activeTab === "stats" && (
@@ -586,6 +769,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                             }) : <div className="text-center py-16"><p className="text-sm text-neutral-600">ยังไม่มีสถิติ</p></div>}
                         </div>
                     )}
+
                 </div>
             </div>
 

@@ -80,6 +80,8 @@ model MockTest {
   timeSpent Int
   testDate  DateTime @default(now())
   notes     String?  @db.Text
+
+  snapshots MockTestSnapshot[]
 }
 
 model ActiveMockTest {
@@ -97,9 +99,8 @@ model ActiveMockTest {
   inputHours   Int
   inputMinutes Int
 
+  updatedAt DateTime           @updatedAt
   snapshots MockTestSnapshot[]
-
-  updatedAt DateTime @updatedAt
 }
 
 enum MockTestSnapshotType {
@@ -113,19 +114,20 @@ enum MockTestSnapshotType {
 model MockTestSnapshot {
   id Int @id @default(autoincrement())
 
-  activeTestId Int
-  activeTest   ActiveMockTest @relation(fields: [activeTestId], references: [id], onDelete: Cascade)
+  activeMockTestId Int
+  activeMockTest   ActiveMockTest @relation(fields: [activeMockTestId], references: [id], onDelete: Cascade)
 
   type MockTestSnapshotType
 
   timeSpent Int
   remaining Int
-
-  note String? @db.Text
+  note      String? @db.Text
 
   createdAt DateTime @default(now())
 
-  images MockTestSnapshotImage[]
+  images     MockTestSnapshotImage[]
+  mockTest   MockTest?               @relation(fields: [mockTestId], references: [id])
+  mockTestId Int?
 }
 
 model MockTestSnapshotImage {
