@@ -258,7 +258,7 @@ export default function ResourceClient({
                                 ))}
                             </select>
 
-                            <div className="pointer-events-none absolute right-4 top-[38px] text-neutral-500">
+                            <div className="pointer-events-none absolute right-4 top-9.5 text-neutral-500">
                                 ▼
                             </div>
                         </div>
@@ -296,7 +296,7 @@ export default function ResourceClient({
                                 </option>
                             </select>
 
-                            <div className="pointer-events-none absolute right-4 top-[38px] text-neutral-500">
+                            <div className="pointer-events-none absolute right-4 top-9.5 text-neutral-500">
                                 ▼
                             </div>
                         </div>
