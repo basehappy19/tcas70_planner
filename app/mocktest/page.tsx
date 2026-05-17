@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import MockTestClient from "./MockTestClient";
+import { getActiveTestState } from "../actions/mocktest"; // 🌟 Import เพิ่ม
 
 export default async function MockTestPage() {
     const subjects = await prisma.subject.findMany({ orderBy: { name: "asc" } });
@@ -30,6 +31,8 @@ export default async function MockTestPage() {
         };
     });
 
+    const activeTest = await getActiveTestState();
+
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-white font-sans px-4 pb-24 md:pb-0">
             <div className="max-w-6xl mx-auto py-8">
@@ -37,7 +40,12 @@ export default async function MockTestPage() {
                     <h1 className="text-2xl font-black text-white tracking-tight">ระบบจำลองสอบ</h1>
                     <p className="text-neutral-500 text-sm mt-1">จับเวลา · บันทึกคะแนน · วิเคราะห์ผล</p>
                 </div>
-                <MockTestClient subjects={subjects} history={history} stats={stats} />
+                <MockTestClient 
+                    subjects={subjects} 
+                    history={history} 
+                    stats={stats} 
+                    initialActiveTest={activeTest}
+                />
             </div>
         </div>
     );

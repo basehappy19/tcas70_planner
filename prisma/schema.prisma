@@ -79,6 +79,18 @@ model MockTest {
   notes       String?  @db.Text
 }
 
+model ActiveMockTest {
+  id            Int       @id @default(autoincrement())
+  subjectId     Int
+  totalTime     Int       
+  timeSpent     Int       @default(0)
+  lastStartedAt DateTime? 
+  status        String    
+  inputHours    Int
+  inputMinutes  Int
+  updatedAt     DateTime  @updatedAt
+}
+
 model Resource {
   id        Int      @id @default(autoincrement())
   subjectId Int

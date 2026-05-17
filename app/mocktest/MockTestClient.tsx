@@ -3,7 +3,15 @@ import { useState, useEffect } from "react";
 import dayjs from "dayjs";
 import buddhistEra from "dayjs/plugin/buddhistEra";
 import "dayjs/locale/th";
-import { addMockTest } from "../actions/mocktest";
+import { 
+    addMockTest, 
+    getActiveTestState, 
+    startMockTest, 
+    togglePauseResumeMockTest, 
+    enterScoringPhase, 
+    cancelMockTest,
+    ActiveTestState
+} from "../actions/mocktest"; // 🌟 Import ฟังก์ชันใหม่ๆ
 
 dayjs.extend(buddhistEra);
 dayjs.locale("th");
@@ -19,7 +27,12 @@ type MockTestStat = {
 };
 type TestPhase = "setup" | "running" | "paused" | "scoring";
 
-interface Props { subjects: Subject[]; history: MockTestHistory[]; stats: MockTestStat[]; }
+interface Props { 
+    subjects: Subject[]; 
+    history: MockTestHistory[]; 
+    stats: MockTestStat[]; 
+    initialActiveTest: ActiveTestState; // 🌟 เพิ่มบรรทัดนี้
+}
 
 const pad = (n: number) => n.toString().padStart(2, "0");
 function formatTime(s: number) {
@@ -38,7 +51,7 @@ function scoreBg(pct: number) {
     return "bg-red-500/10 border-red-500/20";
 }
 
-function Ring({ timeLeft, total, paused }: { pct: number; timeLeft: number; total: number; paused: boolean }) {
+function Ring({ pct, timeLeft, total, paused }: { pct: number; timeLeft: number; total: number; paused: boolean }) {
     const r = 80, circ = 2 * Math.PI * r;
     const progress = total > 0 ? timeLeft / total : 1;
     const stroke = paused ? "#f59e0b" : timeLeft < 300 ? "#f87171" : "#34d399";
@@ -58,34 +71,102 @@ function Ring({ timeLeft, total, paused }: { pct: number; timeLeft: number; tota
     );
 }
 
-export default function MockTestClient({ subjects, history, stats }: Props) {
+export default function MockTestClient({ subjects, history, stats, initialActiveTest }: Props) {
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [phase, setPhase] = useState<TestPhase>("setup");
-    const [selectedSubjectId, setSelectedSubjectId] = useState<number | "">("");
-    const [inputHours, setInputHours] = useState(1);
-    const [inputMinutes, setInputMinutes] = useState(0);
-    const [timeLeft, setTimeLeft] = useState(0);
-    const [totalTime, setTotalTime] = useState(0);
-    const [timeSpent, setTimeSpent] = useState(0);
+    
+    // 🌟 ดึงค่าตั้งต้นจาก initialActiveTest
+    const [phase, setPhase] = useState<TestPhase>(initialActiveTest ? (initialActiveTest.status.toLowerCase() as TestPhase) : "setup");
+    const [selectedSubjectId, setSelectedSubjectId] = useState<number | "">(initialActiveTest?.subjectId || "");
+    const [inputHours, setInputHours] = useState(initialActiveTest?.inputHours || 1);
+    const [inputMinutes, setInputMinutes] = useState(initialActiveTest?.inputMinutes || 0);
+    const [totalTime, setTotalTime] = useState(initialActiveTest?.totalTime || 0);
+    const [timeSpent, setTimeSpent] = useState(initialActiveTest?.timeSpent || 0);
+
     const [score, setScore] = useState("");
     const [notes, setNotes] = useState("");
     const [activeTab, setActiveTab] = useState<"history" | "stats">("history");
 
     const currentSubject = subjects.find(s => s.id === Number(selectedSubjectId));
+    
+    const timeLeft = Math.max(0, totalTime - timeSpent);
 
+    useEffect(() => {
+        const syncInterval = setInterval(async () => {
+            const serverState = await getActiveTestState();
+            
+            if (!serverState) {
+                if (phase !== "setup") setPhase("setup");
+                return;
+            }
+
+            const serverPhase = serverState.status.toLowerCase() as TestPhase;
+            if (serverPhase !== phase) setPhase(serverPhase);
+
+            setSelectedSubjectId(serverState.subjectId);
+            setInputHours(serverState.inputHours);
+            setInputMinutes(serverState.inputMinutes);
+            setTotalTime(serverState.totalTime);
+
+            // ซิงค์เวลาเฉพาะถ้าเพี้ยนไปมากกว่า 2 วินาที (กันหน้าจอกระตุก)
+            if (Math.abs(serverState.timeSpent - timeSpent) > 2) {
+                setTimeSpent(serverState.timeSpent);
+            }
+        }, 3000);
+
+        return () => clearInterval(syncInterval);
+    }, [phase, timeSpent]);
+
+    // 🌟 Timer Tick วิ่งนับเวลาฝั่ง Local (วินาทีละ 1 ครั้ง)
     useEffect(() => {
         if (phase !== "running") return;
         const id = setInterval(() => {
-            setTimeLeft(p => { if (p <= 1) { setPhase("scoring"); return 0; } return p - 1; });
-            setTimeSpent(p => p + 1);
+            setTimeSpent(prev => {
+                const next = prev + 1;
+                if (next >= totalTime && totalTime > 0) {
+                    setPhase("scoring");
+                    enterScoringPhase(); // อัปเดต Server ทันที
+                    return totalTime;
+                }
+                return next;
+            });
         }, 1000);
         return () => clearInterval(id);
-    }, [phase]);
+    }, [phase, totalTime]);
 
-    const handleStart = () => {
+    const handleStart = async () => {
         const t = inputHours * 3600 + inputMinutes * 60;
         if (!selectedSubjectId || t <= 0) return;
-        setTotalTime(t); setTimeLeft(t); setTimeSpent(0); setPhase("running");
+        
+        setTotalTime(t); 
+        setTimeSpent(0); 
+        setPhase("running");
+
+        // ยิง Server
+        await startMockTest({
+            subjectId: Number(selectedSubjectId),
+            totalTime: t,
+            inputHours,
+            inputMinutes
+        });
+    };
+
+    const togglePause = async () => {
+        const nextPhase = phase === "running" ? "paused" : "running";
+        setPhase(nextPhase);
+        await togglePauseResumeMockTest(nextPhase === "paused" ? "PAUSE" : "RESUME");
+    };
+
+    const handleForceScoring = async () => {
+        setPhase("scoring");
+        await enterScoringPhase();
+    };
+
+    const handleCancel = async () => {
+        setPhase("setup");
+        setSelectedSubjectId("");
+        setScore("");
+        setNotes("");
+        await cancelMockTest();
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -108,13 +189,9 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-
             {/* ══ LEFT: Exam panel ══ */}
             <div className="lg:col-span-2 space-y-4">
-
-                {/* Timer card */}
                 <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
-
                     {/* ── Setup phase ── */}
                     {phase === "setup" && (
                         <div className="p-6">
@@ -128,7 +205,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                         onChange={e => setSelectedSubjectId(parseInt(e.target.value))}
                                         className="cursor-pointer w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3.5 py-2.5 outline-none transition-colors appearance-none"
                                     >
-                                        <option  value="" disabled>-- เลือกรายวิชา --</option>
+                                        <option value="" disabled>-- เลือกรายวิชา --</option>
                                         {subjects.map(s => (
                                             <option key={s.id} value={s.id}>{s.name} · {s.fullScore} คะแนน</option>
                                         ))}
@@ -170,12 +247,10 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                     {/* ── Running / Paused ── */}
                     {(phase === "running" || phase === "paused") && (
                         <div className="p-6 flex flex-col items-center">
-                            {/* Subject pill */}
                             <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full mb-6">
                                 {currentSubject?.name}
                             </span>
 
-                            {/* Ring timer */}
                             <div className="relative w-50 h-50 flex items-center justify-center mb-6">
                                 <Ring pct={0} timeLeft={timeLeft} total={totalTime} paused={phase === "paused"} />
                                 <div className="relative z-10 text-center">
@@ -191,23 +266,14 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                 </div>
                             </div>
 
-                            {/* Time spent */}
                             <p className="text-xs text-neutral-600 mb-5 font-mono">ผ่านไป {formatTime(timeSpent)}</p>
 
-                            {/* Controls */}
                             <div className="flex gap-2 w-full">
-                                {phase === "running" ? (
-                                    <button onClick={() => setPhase("paused")}
-                                        className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors">
-                                        พัก
-                                    </button>
-                                ) : (
-                                    <button onClick={() => setPhase("running")}
-                                        className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors">
-                                        ทำต่อ
-                                    </button>
-                                )}
-                                <button onClick={() => setPhase("scoring")}
+                                <button onClick={togglePause}
+                                    className={`cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors ${phase === "running" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"}`}>
+                                    {phase === "running" ? "พัก" : "ทำต่อ"}
+                                </button>
+                                <button onClick={handleForceScoring}
                                     className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm font-semibold bg-neutral-800 text-neutral-300 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/20 border border-neutral-700 transition-colors">
                                     ส่งข้อสอบ
                                 </button>
@@ -224,7 +290,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                         <polyline points="20 6 9 17 4 12"/>
                                     </svg>
                                 </div>
-                                <p className="text-base font-bold text-white">หมดเวลาสอบ</p>
+                                <p className="text-base font-bold text-white">หมดเวลาสอบ / ส่งข้อสอบ</p>
                                 <p className="text-xs text-neutral-500 mt-0.5 font-mono">ใช้เวลา {Math.ceil(timeSpent / 60)} นาที · {currentSubject?.name}</p>
                             </div>
 
@@ -244,7 +310,6 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                             </span>
                                         )}
                                     </div>
-                                    {/* % bar */}
                                     {score && currentSubject && (
                                         <div className="mt-2">
                                             <div className="flex justify-between text-[10px] mb-1">
@@ -261,7 +326,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                 </div>
 
                                 <div>
-                                    <label className="text-[11px] text-neutral-500 uppercase tracking-wider font-semibold block mb-1.5">บันทึก (ไม่บังคับ)</label>
+                                    <label className="text-[11px] text-neutral-500 uppercase tracking-wider font-semibold block mb-1.5">บันทึก</label>
                                     <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
                                         placeholder="ข้อผิดพลาด สิ่งที่ต้องทบทวน..."
                                         className="w-full bg-neutral-950 text-white text-sm border border-neutral-800 focus:border-emerald-500/60 rounded-xl px-3.5 py-2.5 outline-none resize-none placeholder:text-neutral-700"
@@ -269,7 +334,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                 </div>
 
                                 <div className="flex gap-2 pt-1">
-                                    <button type="button" onClick={() => setPhase("setup")}
+                                    <button type="button" onClick={handleCancel}
                                         className="cursor-pointer flex-1 py-2.5 rounded-xl text-sm text-neutral-500 hover:text-white hover:bg-white/5 border border-neutral-800 transition-colors">
                                         ยกเลิก
                                     </button>
@@ -283,7 +348,7 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                     )}
                 </div>
 
-                {/* Stats card — desktop only, shows below timer */}
+                {/* Stats card */}
                 <div className="hidden lg:block bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
                     <p className="text-xs text-neutral-500 uppercase tracking-widest font-semibold mb-4">สถิติรายวิชา</p>
                     <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
@@ -307,7 +372,6 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                             </div>
                                         ))}
                                     </div>
-                                    {/* avg bar */}
                                     <div className="mt-2.5 h-1 bg-neutral-800 rounded-full overflow-hidden">
                                         <div className={`h-full rounded-full ${avgPct >= 80 ? "bg-emerald-400" : avgPct >= 50 ? "bg-amber-400" : "bg-red-400"}`}
                                             style={{ width: `${Math.min(avgPct, 100)}%` }} />
@@ -324,7 +388,6 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
             {/* ══ RIGHT: History + Stats tabs ══ */}
             <div className="lg:col-span-3">
                 <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
-                    {/* Tabs */}
                     <div className="flex border-b border-neutral-800">
                         {(["history", "stats"] as const).map(tab => (
                             <button key={tab} onClick={() => setActiveTab(tab)}
@@ -335,7 +398,6 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                     </div>
 
                     <div className="p-5">
-                        {/* History tab */}
                         {activeTab === "history" && (
                             <div className="space-y-3 max-h-150 overflow-y-auto pr-1">
                                 {history.length > 0 ? history.map(item => {
@@ -360,7 +422,6 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                                                     <p className={`text-[10px] font-bold mt-0.5 ${scoreColor(p)}`}>{p.toFixed(0)}%</p>
                                                 </div>
                                             </div>
-                                            {/* Score bar */}
                                             <div className="mt-3 h-1 bg-black/30 rounded-full overflow-hidden">
                                                 <div className={`h-full rounded-full transition-all ${p >= 80 ? "bg-emerald-400" : p >= 50 ? "bg-amber-400" : "bg-red-400"}`}
                                                     style={{ width: `${Math.min(p, 100)}%` }} />
@@ -376,7 +437,6 @@ export default function MockTestClient({ subjects, history, stats }: Props) {
                             </div>
                         )}
 
-                        {/* Stats tab */}
                         {activeTab === "stats" && (
                             <div className="space-y-3">
                                 {stats.length > 0 ? stats.map(stat => {
