@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import dayjs from "dayjs";
 import HeroSection from "./components/HeroSection";
+import { getCurrentSessionState } from "@/app/actions/study";
 
 export default async function Page() {
     const bkkTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" });
@@ -10,11 +11,14 @@ export default async function Page() {
         orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
     });
 
+    const initialStatus = await getCurrentSessionState();
+
     return (
         <main>
             <HeroSection
                 allSchedules={allSchedules}
                 initialTime={initialServerTime}
+                initialStatus={initialStatus}
             />
         </main>
     );

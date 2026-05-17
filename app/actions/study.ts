@@ -20,6 +20,29 @@ async function getActiveSession() {
     });
 }
 
+// ฟังก์ชันใหม่: ดึงสถานะปัจจุบันของ Session
+export async function getCurrentSessionState(): Promise<"IDLE" | "STUDYING" | "PAUSED"> {
+    try {
+        const activeSession = await getActiveSession();
+        if (!activeSession) return "IDLE";
+
+        const latestAction = await prisma.studyActionLog.findFirst({
+            where: { 
+                studyLogId: activeSession.id,
+                action: { in: ["PAUSE", "RESUME", "START_ON_TIME", "START_LATE"] }
+            },
+            orderBy: { id: "desc" }
+        });
+
+        if (latestAction?.action === "PAUSE") return "PAUSED";
+        
+        return "STUDYING";
+    } catch (e) {
+        console.error("Error fetching current state:", e);
+        return "IDLE";
+    }
+}
+
 export async function createStudySession({ scheduleId }: { scheduleId: number }) {
     try {
         const schedule = await prisma.schedule.findUnique({
@@ -76,11 +99,10 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
     }
 }
 
-// 🌟 อัปเดตฟังก์ชันนี้ให้รับ imageUrls เป็น Array ของ String
 export async function addActionLogToDB(
     action: StudyActionType, 
     note?: string,
-    imageUrls?: string[] // รับ array ของรูปภาพ (อาจจะไม่มีก็ได้)
+    imageUrls?: string[]
 ) {
     try {
         const activeSession = await getActiveSession();
@@ -91,7 +113,6 @@ export async function addActionLogToDB(
                 studyLogId: activeSession.id,
                 action,
                 note,
-                // 🌟 เพิ่มคำสั่ง create สำหรับ Relation ไปที่ตารางรูปภาพ
                 images: imageUrls && imageUrls.length > 0 ? {
                     create: imageUrls.map(url => ({
                         url: url

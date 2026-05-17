@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 import isBetween from "dayjs/plugin/isBetween";
-import { addActionLogToDB, createStudySession, finishStudySession } from "@/app/actions/study";
+import { addActionLogToDB, createStudySession, finishStudySession, getCurrentSessionState } from "@/app/actions/study";
 import { uploadImageToDrive } from "@/app/actions/drive";
 import buddhistEra from 'dayjs/plugin/buddhistEra';
 import 'dayjs/locale/th';
@@ -28,6 +28,7 @@ type Schedule = {
 type Props = {
     allSchedules: Schedule[];
     initialTime: string;
+    initialStatus: "IDLE" | "STUDYING" | "PAUSED";
 };
 
 const DAY_NAMES_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
@@ -45,19 +46,22 @@ const timeToMinutes = (time: string) => {
 };
 
 const TYPE_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-    ติว: { bg: "bg-blue-500/15", text: "text-blue-400", dot: "bg-blue-400" },
-    เวลาว่าง: { bg: "bg-emerald-500/15", text: "text-emerald-400", dot: "bg-emerald-400" },
-    ลองสอบ: { bg: "bg-violet-500/15", text: "text-violet-400", dot: "bg-violet-400" },
-    DEFAULT: { bg: "bg-neutral-700/40", text: "text-neutral-300", dot: "bg-neutral-400" },
+    'ติว': { bg: "bg-blue-500/15", text: "text-blue-400", dot: "bg-blue-400" },
+    'เวลาว่าง': { bg: "bg-emerald-500/15", text: "text-emerald-400", dot: "bg-emerald-400" },
+    'ลองสอบ': { bg: "bg-violet-500/15", text: "text-violet-400", dot: "bg-violet-400" },
+    'อื่น ๆ': { bg: "bg-pink-500/15", text: "text-pink-400", dot: "bg-pink-400" },
+    'DEFAULT': { bg: "bg-neutral-700/40", text: "text-neutral-300", dot: "bg-neutral-400" },
 };
 
 const getTypeColor = (type: string) => TYPE_COLORS[type?.toUpperCase()] ?? TYPE_COLORS.DEFAULT;
 
-export default function HeroSection({ allSchedules, initialTime }: Props) {
+export default function HeroSection({ allSchedules, initialTime, initialStatus }: Props) {
     const [currentTime, setCurrentTime] = useState(initialTime);
     const [nowDow, setNowDow] = useState<number>(dayjs().day());
     const [nowMinutes, setNowMinutes] = useState(timeToMinutes(dayjs().format("HH:mm")));
-    const [status, setStatus] = useState<"IDLE" | "STUDYING" | "PAUSED">("IDLE");
+    
+    const [status, setStatus] = useState<"IDLE" | "STUDYING" | "PAUSED">(initialStatus);
+    
     const [isSaving, setIsSaving] = useState(false);
     const [canEndSession, setCanEndSession] = useState(false);
     const [showNoteModal, setShowNoteModal] = useState(false);
@@ -65,7 +69,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
     const [selectedDay, setSelectedDay] = useState<number>(dayjs().day());
     const [noteError, setNoteError] = useState(false);
 
-    // 🌟 เปลี่ยน State เป็น Array เพื่อเก็บหลายไฟล์
     const [imageFiles, setImageFiles] = useState<File[]>([]);
     const [imagePreviews, setImagePreviews] = useState<string[]>([]);
     const [isUploading, setIsUploading] = useState(false);
@@ -112,6 +115,20 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
     const [currentSchedule, setCurrentSchedule] = useState(() => getCurrentSchedule(dayjs().day(), timeToMinutes(dayjs().format("HH:mm"))));
 
     useEffect(() => {
+        const syncStatusInterval = setInterval(async () => {
+            const serverStatus = await getCurrentSessionState();
+            setStatus(currentStatus => {
+                if (serverStatus !== currentStatus) {
+                    return serverStatus;
+                }
+                return currentStatus;
+            });
+        }, 3000);
+
+        return () => clearInterval(syncStatusInterval);
+    }, []);
+
+    useEffect(() => {
         const timer = setInterval(() => {
             const now = dayjs();
             setCurrentTime(now.format("h:mm:ss A"));
@@ -144,7 +161,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
         if (!nextSchedule) return null;
 
         const now = dayjs();
-
         let target = dayjs()
             .day(nextSchedule.dayOfWeek)
             .hour(Number(nextSchedule.startTime.split(":")[0]))
@@ -189,11 +205,17 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
 
     const handleEndSession = async () => {
         setIsSaving(true);
+        
+        // 🌟 ถ้ากำลังกดจบคาบของวิชาที่ไม่ใช่ "ติว" (ข้ามปุ่มเริ่มเรียนมา) ให้สร้าง Session ลง DB ก่อนเลย
+        if (status === "IDLE" && currentSchedule?.id) {
+            await createStudySession({ scheduleId: currentSchedule.id });
+        }
+
         await addActionLogToDB("END_SESSION");
         const res = await finishStudySession();
         setIsSaving(false);
 
-        if (res.success) {
+        if (res.success || status === "IDLE") {
             const now = dayjs();
             const dow = now.day();
             const mins = timeToMinutes(now.format("HH:mm"));
@@ -234,7 +256,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
         setNoteText("");
         setNoteError(false);
         setImageFiles([]);
-        imagePreviews.forEach(URL.revokeObjectURL); // ล้างหน่วยความจำรูปพรีวิวทั้งหมด
+        imagePreviews.forEach(URL.revokeObjectURL);
         setImagePreviews([]);
         setShowNoteModal(false);
     };
@@ -280,7 +302,8 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                             <span className="bg-neutral-800 px-3 py-1.5 rounded-lg">{formatTo12Hour(currentSchedule.endTime)}</span>
                         </div>
 
-                        {status === "IDLE" ? (
+                        {/* 🌟 เช็คว่าถ้าเป็น "ติว" และยังเป็น IDLE จะต้องแสดงปุ่ม "เริ่มติวเลย" */}
+                        {status === "IDLE" && currentSchedule.type === "ติว" ? (
                             <button
                                 onClick={handleStartStudy}
                                 className="cursor-pointer w-full bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-neutral-950 font-black py-3.5 rounded-xl text-base transition-all"
@@ -288,15 +311,18 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                                 เริ่มติวเลย →
                             </button>
                         ) : (
+                            // 🌟 ถ้าเรียนอยู่ หรือ ถ้าเป็นวิชาที่ไม่ใช่ "ติว" (เช่น เวลาว่าง, ลองสอบ) จะข้ามมาหน้านี้ทันที
                             <div className="space-y-3">
-                                <div className={`flex justify-between items-center px-4 py-3 rounded-xl border text-sm ${status === "STUDYING" ? "border-emerald-500/25 bg-emerald-500/8" : "border-amber-500/25 bg-amber-500/8"}`}>
+                                <div className={`flex justify-between items-center px-4 py-3 rounded-xl border text-sm ${status === "IDLE" ? "border-neutral-700 bg-neutral-800/40" : status === "STUDYING" ? "border-emerald-500/25 bg-emerald-500/8" : "border-amber-500/25 bg-amber-500/8"}`}>
                                     <div className="flex items-center gap-2.5">
-                                        <span className="relative flex h-2.5 w-2.5">
-                                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${status === "STUDYING" ? "bg-emerald-400" : "bg-amber-400"}`} />
-                                            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${status === "STUDYING" ? "bg-emerald-500" : "bg-amber-500"}`} />
-                                        </span>
-                                        <span className={`font-semibold ${status === "STUDYING" ? "text-emerald-400" : "text-amber-400"}`}>
-                                            {status === "STUDYING" ? "กำลังเรียน" : "พักเบรก"}
+                                        {status !== "IDLE" && (
+                                            <span className="relative flex h-2.5 w-2.5">
+                                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${status === "STUDYING" ? "bg-emerald-400" : "bg-amber-400"}`} />
+                                                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${status === "STUDYING" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                                            </span>
+                                        )}
+                                        <span className={`font-semibold ${status === "IDLE" ? "text-neutral-400" : status === "STUDYING" ? "text-emerald-400" : "text-amber-400"}`}>
+                                            {status === "IDLE" ? `คาบ${currentSchedule.type}` : status === "STUDYING" ? "กำลังเรียน" : "พักเบรก"}
                                         </span>
                                     </div>
                                     <div className="flex gap-2">
@@ -306,16 +332,18 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                                         >
                                             จดโน้ต
                                         </button>
-                                        <button
-                                            onClick={() => {
-                                                const next = status === "STUDYING" ? "PAUSED" : "STUDYING";
-                                                setStatus(next);
-                                                addActionLogToDB(next === "STUDYING" ? "RESUME" : "PAUSE");
-                                            }}
-                                            className="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-800 text-neutral-200 hover:bg-neutral-700 transition-colors"
-                                        >
-                                            {status === "STUDYING" ? "พัก" : "เรียนต่อ"}
-                                        </button>
+                                        {status !== "IDLE" && (
+                                            <button
+                                                onClick={() => {
+                                                    const next = status === "STUDYING" ? "PAUSED" : "STUDYING";
+                                                    setStatus(next);
+                                                    addActionLogToDB(next === "STUDYING" ? "RESUME" : "PAUSE");
+                                                }}
+                                                className="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-800 text-neutral-200 hover:bg-neutral-700 transition-colors"
+                                            >
+                                                {status === "STUDYING" ? "พัก" : "เรียนต่อ"}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                                 <button
@@ -326,7 +354,7 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                                         : "cursor-not-allowed border-neutral-800 bg-transparent text-neutral-600"
                                         }`}
                                 >
-                                    {isSaving ? "กำลังบันทึก..." : canEndSession ? "จบชั่วโมงการเรียน" : `ยังไม่ถึงเวลาจบ · ${formatTo12Hour(currentSchedule.endTime)}`}
+                                    {isSaving ? "กำลังบันทึก..." : canEndSession ? (status === "IDLE" ? "จบคาบ" : "จบชั่วโมงการเรียน") : `ยังไม่ถึงเวลาจบ · ${formatTo12Hour(currentSchedule.endTime)}`}
                                 </button>
                             </div>
                         )}
@@ -505,7 +533,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                         )}
 
                         <div className="mt-3 flex items-center">
-                            {/* 🌟 เพิ่มคุณสมบัติ multiple ให้รับหลายไฟล์ได้ */}
                             <input
                                 type="file"
                                 accept="image/*"
@@ -551,7 +578,6 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                                     setIsUploading(true);
                                     let uploadedUrls: string[] = [];
 
-                                    // 🌟 อัปโหลดรูปทั้งหมดพร้อมกัน (Concurrent upload)
                                     if (imageFiles.length > 0) {
                                         const uploadPromises = imageFiles.map(async (file) => {
                                             const formData = new FormData();
@@ -561,8 +587,13 @@ export default function HeroSection({ allSchedules, initialTime }: Props) {
                                         });
 
                                         const results = await Promise.all(uploadPromises);
-                                        // กรองเฉพาะ URL ที่อัปโหลดสำเร็จ (เอาค่า null ออก)
                                         uploadedUrls = results.filter((url): url is string => url !== null);
+                                    }
+
+                                    // 🌟 สร้าง Session เก็บไว้ในฐานข้อมูลให้ทันทีก่อนอัปเดตบันทึก (สำหรับวิชาที่ไม่ได้กด 'เริ่มติวเลย')
+                                    if (status === "IDLE" && currentSchedule?.id) {
+                                        await createStudySession({ scheduleId: currentSchedule.id });
+                                        setStatus("STUDYING"); 
                                     }
 
                                     await addActionLogToDB("TAKE_NOTE", noteText, uploadedUrls);
