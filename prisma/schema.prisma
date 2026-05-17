@@ -53,6 +53,7 @@ model StudyActionLog {
 model NoteImage {
   id          Int       @id @default(autoincrement())
   url         String   
+  caption     String?
   createdAt   DateTime  @default(now())
 
   actionLogId Int

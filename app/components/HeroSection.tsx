@@ -31,6 +31,13 @@ type Props = {
     initialStatus: "IDLE" | "STUDYING" | "PAUSED";
 };
 
+// 🌟 สร้าง Type สำหรับเก็บข้อมูลรูปภาพพร้อมคำอธิบาย
+type NoteImageData = {
+    file: File;
+    preview: string;
+    caption: string;
+};
+
 const DAY_NAMES_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const DAY_FULL_TH = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -69,8 +76,8 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
     const [selectedDay, setSelectedDay] = useState<number>(dayjs().day());
     const [noteError, setNoteError] = useState(false);
 
-    const [imageFiles, setImageFiles] = useState<File[]>([]);
-    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+    // 🌟 เปลี่ยนมาใช้ State แบบ Array ของ Object แทนการแยก File และ Preview
+    const [images, setImages] = useState<NoteImageData[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -206,7 +213,6 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
     const handleEndSession = async () => {
         setIsSaving(true);
         
-        // 🌟 ถ้ากำลังกดจบคาบของวิชาที่ไม่ใช่ "ติว" (ข้ามปุ่มเริ่มเรียนมา) ให้สร้าง Session ลง DB ก่อนเลย
         if (status === "IDLE" && currentSchedule?.id) {
             await createStudySession({ scheduleId: currentSchedule.id });
         }
@@ -233,31 +239,42 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
         return DAY_FULL_TH[dow];
     };
 
+    // 🌟 ฟังก์ชันจัดการรูปภาพแบบใหม่
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
         if (files.length > 0) {
-            setImageFiles(prev => [...prev, ...files]);
-            const newPreviews = files.map(file => URL.createObjectURL(file));
-            setImagePreviews(prev => [...prev, ...newPreviews]);
+            const newImages: NoteImageData[] = files.map(file => ({
+                file,
+                preview: URL.createObjectURL(file),
+                caption: ""
+            }));
+            setImages(prev => [...prev, ...newImages]);
         }
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
     const handleRemoveImage = (indexToRemove: number) => {
-        setImageFiles(prev => prev.filter((_, index) => index !== indexToRemove));
-        setImagePreviews(prev => {
-            const newPreviews = prev.filter((_, index) => index !== indexToRemove);
-            URL.revokeObjectURL(prev[indexToRemove]);
-            return newPreviews;
+        setImages(prev => {
+            const newImages = [...prev];
+            URL.revokeObjectURL(newImages[indexToRemove].preview);
+            newImages.splice(indexToRemove, 1);
+            return newImages;
+        });
+    };
+
+    const handleCaptionChange = (index: number, newCaption: string) => {
+        setImages(prev => {
+            const newImages = [...prev];
+            newImages[index].caption = newCaption;
+            return newImages;
         });
     };
 
     const resetNoteModal = () => {
         setNoteText("");
         setNoteError(false);
-        setImageFiles([]);
-        imagePreviews.forEach(URL.revokeObjectURL);
-        setImagePreviews([]);
+        images.forEach(img => URL.revokeObjectURL(img.preview));
+        setImages([]);
         setShowNoteModal(false);
     };
 
@@ -302,7 +319,6 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                             <span className="bg-neutral-800 px-3 py-1.5 rounded-lg">{formatTo12Hour(currentSchedule.endTime)}</span>
                         </div>
 
-                        {/* 🌟 เช็คว่าถ้าเป็น "ติว" และยังเป็น IDLE จะต้องแสดงปุ่ม "เริ่มติวเลย" */}
                         {status === "IDLE" && currentSchedule.type === "ติว" ? (
                             <button
                                 onClick={handleStartStudy}
@@ -311,7 +327,6 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                                 เริ่มติวเลย →
                             </button>
                         ) : (
-                            // 🌟 ถ้าเรียนอยู่ หรือ ถ้าเป็นวิชาที่ไม่ใช่ "ติว" (เช่น เวลาว่าง, ลองสอบ) จะข้ามมาหน้านี้ทันที
                             <div className="space-y-3">
                                 <div className={`flex justify-between items-center px-4 py-3 rounded-xl border text-sm ${status === "IDLE" ? "border-neutral-700 bg-neutral-800/40" : status === "STUDYING" ? "border-emerald-500/25 bg-emerald-500/8" : "border-amber-500/25 bg-amber-500/8"}`}>
                                     <div className="flex items-center gap-2.5">
@@ -509,24 +524,35 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                                 if (noteError) setNoteError(false);
                             }}
                             placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
-                            className={`w-full h-32 bg-neutral-950 text-white text-sm p-3.5 rounded-xl border outline-none resize-none placeholder:text-neutral-600 transition-colors ${noteError
+                            className={`w-full h-24 bg-neutral-950 text-white text-sm p-3.5 rounded-xl border outline-none resize-none placeholder:text-neutral-600 transition-colors ${noteError
                                 ? "border-rose-500 focus:border-rose-400"
                                 : "border-neutral-800 focus:border-blue-500"
                                 }`}
                             autoFocus
                         />
 
-                        {imagePreviews.length > 0 && (
-                            <div className="flex flex-wrap gap-3 mt-3 max-h-40 overflow-y-auto">
-                                {imagePreviews.map((preview, index) => (
-                                    <div key={index} className="relative w-fit">
-                                        <Image width={96} height={96} src={preview} alt={`Preview ${index}`} className="h-24 w-auto rounded-lg border border-neutral-700 object-cover" />
-                                        <button
-                                            onClick={() => handleRemoveImage(index)}
-                                            className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md cursor-pointer hover:bg-rose-400 transition-colors"
-                                        >
-                                            ✕
-                                        </button>
+                        {/* 🌟 แสดงรายการรูปภาพพร้อมช่องกรอกคำอธิบายแต่ละรูป */}
+                        {images.length > 0 && (
+                            <div className="flex flex-col gap-3 mt-3 max-h-48 overflow-y-auto pr-1">
+                                {images.map((img, index) => (
+                                    <div key={index} className="flex gap-3 items-start bg-neutral-950 p-2.5 rounded-xl border border-neutral-800">
+                                        <div className="relative shrink-0">
+                                            <Image width={72} height={72} src={img.preview} alt={`Preview ${index}`} className="h-16 w-16 rounded-lg border border-neutral-700 object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveImage(index)}
+                                                className="absolute -top-2 -left-2 bg-rose-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md cursor-pointer hover:bg-rose-400 transition-colors"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                        <textarea
+                                            value={img.caption}
+                                            onChange={(e) => handleCaptionChange(index, e.target.value)}
+                                            placeholder="เพิ่มคำอธิบายรูปภาพ..."
+                                            rows={2}
+                                            className="flex-1 bg-transparent text-white text-xs border-none outline-none resize-none placeholder:text-neutral-600 mt-1"
+                                        />
                                     </div>
                                 ))}
                             </div>
@@ -546,10 +572,10 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                                 onClick={() => fileInputRef.current?.click()}
                                 className="text-xs flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors bg-neutral-800 px-3 py-1.5 rounded-lg cursor-pointer"
                             >
-                                📷 <span>แนบรูปภาพ</span>
+                                📷 <span>แนบรูปภาพเพิ่ม</span>
                             </button>
-                            {imageFiles.length > 0 && (
-                                <span className="ml-3 text-xs text-neutral-500">{imageFiles.length} รูป</span>
+                            {images.length > 0 && (
+                                <span className="ml-3 text-xs text-neutral-500">{images.length} รูป</span>
                             )}
                         </div>
 
@@ -570,33 +596,34 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                             </button>
                             <button
                                 onClick={async () => {
-                                    if (!noteText.trim() && imageFiles.length === 0) {
+                                    if (!noteText.trim() && images.length === 0) {
                                         setNoteError(true);
                                         return;
                                     }
 
                                     setIsUploading(true);
-                                    let uploadedUrls: string[] = [];
+                                    let uploadedImages: { url: string; caption: string }[] = [];
 
-                                    if (imageFiles.length > 0) {
-                                        const uploadPromises = imageFiles.map(async (file) => {
+                                    if (images.length > 0) {
+                                        const uploadPromises = images.map(async (img) => {
                                             const formData = new FormData();
-                                            formData.append("file", file);
+                                            formData.append("file", img.file);
                                             const uploadRes = await uploadImageToDrive(formData);
-                                            return uploadRes.success ? uploadRes.url : null;
+                                            return uploadRes.success ? { url: uploadRes.url, caption: img.caption } : null;
                                         });
 
                                         const results = await Promise.all(uploadPromises);
-                                        uploadedUrls = results.filter((url): url is string => url !== null);
+                                        // กรองเอาเฉพาะที่อัปโหลดสำเร็จ
+                                        uploadedImages = results.filter((res): res is { url: string; caption: string } => res !== null);
                                     }
 
-                                    // 🌟 สร้าง Session เก็บไว้ในฐานข้อมูลให้ทันทีก่อนอัปเดตบันทึก (สำหรับวิชาที่ไม่ได้กด 'เริ่มติวเลย')
                                     if (status === "IDLE" && currentSchedule?.id) {
                                         await createStudySession({ scheduleId: currentSchedule.id });
                                         setStatus("STUDYING"); 
                                     }
 
-                                    await addActionLogToDB("TAKE_NOTE", noteText, uploadedUrls);
+                                    // 🌟 ส่งข้อมูลพร้อม caption ไปบันทึก
+                                    await addActionLogToDB("TAKE_NOTE", noteText, uploadedImages);
 
                                     setIsUploading(false);
                                     resetNoteModal();
@@ -604,7 +631,7 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                                 disabled={isUploading}
                                 className="cursor-pointer flex-1 bg-blue-600 py-2.5 rounded-xl text-sm font-bold text-white hover:bg-blue-500 active:scale-[0.98] transition-all disabled:opacity-50 disabled:bg-blue-800"
                             >
-                                {isUploading ? `กำลังอัปโหลด ${imageFiles.length} รูป...` : "บันทึก"}
+                                {isUploading ? `กำลังอัปโหลด ${images.length} รูป...` : "บันทึก"}
                             </button>
                         </div>
                     </div>

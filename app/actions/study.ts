@@ -102,7 +102,7 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
 export async function addActionLogToDB(
     action: StudyActionType, 
     note?: string,
-    imageUrls?: string[]
+    images?: { url: string; caption?: string }[]
 ) {
     try {
         const activeSession = await getActiveSession();
@@ -113,9 +113,10 @@ export async function addActionLogToDB(
                 studyLogId: activeSession.id,
                 action,
                 note,
-                images: imageUrls && imageUrls.length > 0 ? {
-                    create: imageUrls.map(url => ({
-                        url: url
+                images: images && images.length > 0 ? {
+                    create: images.map(img => ({
+                        url: img.url,
+                        caption: img.caption
                     }))
                 } : undefined,
             },
