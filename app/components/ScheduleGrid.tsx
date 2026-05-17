@@ -67,6 +67,7 @@ export default function ScheduleGrid({
     isToday?: boolean;
 }) {
     const [isEditing, setIsEditing] = useState(false);
+    const [editVisible, setEditVisible] = useState(false);
 
     const [showHistory, setShowHistory] = useState(false);
     const [historyVisible, setHistoryVisible] = useState(false);
@@ -152,10 +153,26 @@ export default function ScheduleGrid({
                 endTime: false,
             });
 
-            setIsEditing(false);
+            closeEditModal();
         } else {
             alert(res.message);
         }
+    };
+
+    const openEditModal = () => {
+        setIsEditing(true);
+
+        requestAnimationFrame(() => {
+            setEditVisible(true);
+        });
+    };
+
+    const closeEditModal = () => {
+        setEditVisible(false);
+
+        setTimeout(() => {
+            setIsEditing(false);
+        }, 250);
     };
 
     const openHistoryModal = async () => {
@@ -238,10 +255,10 @@ export default function ScheduleGrid({
         <>
             <div
                 className={`relative rounded-xl p-3 border transition-all duration-200 ${isCurrentTimeSlot
-                        ? "bg-emerald-500/8 border-emerald-500/30 shadow-[0_0_16px_rgba(16,185,129,0.12)]"
-                        : isToday
-                            ? "bg-neutral-900 border-neutral-700/60 hover:border-neutral-600"
-                            : "bg-neutral-900/50 border-neutral-800/50 hover:border-neutral-700/50"
+                    ? "bg-emerald-500/8 border-emerald-500/30 shadow-[0_0_16px_rgba(16,185,129,0.12)]"
+                    : isToday
+                        ? "bg-neutral-900 border-neutral-700/60 hover:border-neutral-600"
+                        : "bg-neutral-900/50 border-neutral-800/50 hover:border-neutral-700/50"
                     }`}
             >
                 {isCurrentTimeSlot && (
@@ -273,7 +290,7 @@ export default function ScheduleGrid({
                     </button>
 
                     <button
-                        onClick={() => setIsEditing(true)}
+                        onClick={openEditModal}
                         className="cursor-pointer px-2.5 text-[11px] text-neutral-500 hover:text-neutral-200 bg-white/3 hover:bg-white/[0.07] border border-white/6 py-1.5 rounded-lg transition-colors"
                     >
                         <svg
@@ -297,15 +314,15 @@ export default function ScheduleGrid({
                 <div
                     onClick={closeHistoryModal}
                     className={`fixed inset-0 z-50 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 transition-all duration-300 ${historyVisible
-                            ? "bg-black/30 opacity-100"
-                            : "bg-black/0 opacity-0"
+                        ? "bg-black/30 opacity-100"
+                        : "bg-black/0 opacity-0"
                         }`}
                 >
                     <div
                         onClick={(e) => e.stopPropagation()}
                         className={`bg-[#161616]/95 border border-white/10 w-full max-w-md rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden transition-all duration-300 ${historyVisible
-                                ? "scale-100 translate-y-0 opacity-100"
-                                : "scale-95 translate-y-4 opacity-0"
+                            ? "scale-100 translate-y-0 opacity-100"
+                            : "scale-95 translate-y-4 opacity-0"
                             }`}
                     >
                         <div className="flex items-start justify-between p-5 border-b border-neutral-800/60 shrink-0">
@@ -495,12 +512,18 @@ export default function ScheduleGrid({
             )}
             {isEditing && (
                 <div
-                    onClick={() => setIsEditing(false)}
-                    className="fixed inset-0 z-50 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 transition-all duration-300 bg-black/30 opacity-100"
+                    onClick={closeEditModal}
+                    className={`fixed inset-0 z-50 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 transition-all duration-300 ${editVisible
+                            ? "bg-black/30 opacity-100"
+                            : "bg-black/0 opacity-0"
+                        }`}
                 >
                     <div
                         onClick={(e) => e.stopPropagation()}
-                        className="bg-[#161616]/95 border border-white/10 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 scale-100 translate-y-0 opacity-100"
+                        className={`bg-[#161616]/95 border border-white/10 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 ${editVisible
+                                ? "scale-100 translate-y-0 opacity-100"
+                                : "scale-95 translate-y-4 opacity-0"
+                            }`}
                     >
                         <div className="flex items-center justify-between p-5 border-b border-neutral-800/60">
                             <div>
@@ -514,7 +537,7 @@ export default function ScheduleGrid({
                             </div>
 
                             <button
-                                onClick={() => setIsEditing(false)}
+                                onClick={closeEditModal}
                                 className="cursor-pointer text-neutral-600 hover:text-white p-1 transition-colors"
                             >
                                 <svg
@@ -640,7 +663,7 @@ export default function ScheduleGrid({
 
                         <div className="flex gap-2 p-5 pt-0">
                             <button
-                                onClick={() => setIsEditing(false)}
+                                onClick={closeEditModal}
                                 className="cursor-pointer flex-1 py-3 rounded-2xl text-sm text-neutral-400 hover:text-white hover:bg-white/5 border border-neutral-800 transition-colors"
                             >
                                 ยกเลิก
@@ -664,15 +687,15 @@ export default function ScheduleGrid({
                 <div
                     onClick={closeImageModal}
                     className={`fixed inset-0 z-60 backdrop-blur-xl flex items-center justify-center p-4 transition-all duration-300 ${imageVisible
-                            ? "bg-black/25 opacity-100"
-                            : "bg-black/0 opacity-0"
+                        ? "bg-black/25 opacity-100"
+                        : "bg-black/0 opacity-0"
                         }`}
                 >
                     <div
                         onClick={(e) => e.stopPropagation()}
                         className={`relative w-full max-w-5xl flex flex-col items-center transition-all duration-300 ${imageVisible
-                                ? "scale-100 opacity-100 translate-y-0"
-                                : "scale-95 opacity-0 translate-y-4"
+                            ? "scale-100 opacity-100 translate-y-0"
+                            : "scale-95 opacity-0 translate-y-4"
                             }`}
                     >
                         <button
