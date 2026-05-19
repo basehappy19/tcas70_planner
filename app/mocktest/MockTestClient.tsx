@@ -1,8 +1,13 @@
 'use client'
+
 import { useState, useEffect, useRef } from "react";
+
 import dayjs from "dayjs";
+
 import buddhistEra from "dayjs/plugin/buddhistEra";
+
 import "dayjs/locale/th";
+
 import {
     getActiveTestState,
     startMockTest,
@@ -13,12 +18,20 @@ import {
     ActiveTestState,
     addMockTestNote,
     backToRunning,
+    deleteTestHistory,
 } from "../actions/mocktest";
+
 import { uploadImageToDrive } from "../actions/drive";
+
 import Image from "next/image";
 
+
+
 dayjs.extend(buddhistEra);
+
 dayjs.locale("th");
+
+
 
 /* ══════════════════════════════════════
    TYPES
@@ -39,6 +52,8 @@ type TestHistory = {
     notes: string | null;
     subject: Subject;
     actions: ActionItem[];
+    timeLimitMinutes: number;
+    timeSpentSeconds: number;
 };
 type TestStat = { subjectId: number; subjectName: string; fullScore: number; min: number; max: number; avg: number; count: number };
 type TestPhase = "setup" | "running" | "paused" | "scoring";
@@ -51,6 +66,8 @@ type LocalImage = {
     driveUrl?: string;
 };
 
+
+
 interface Props {
     subjects: Subject[];
     history: TestHistory[];
@@ -58,13 +75,22 @@ interface Props {
     initialActiveTest: ActiveTestState;
 }
 
+
+
 /* ══════════════════════════════════════
    HELPERS
 ══════════════════════════════════════ */
+
 const pad = (n: number) => n.toString().padStart(2, "0");
 function formatTime(s: number) {
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
     return h > 0 ? `${h}:${pad(m)}:${pad(ss)}` : `${pad(m)}:${pad(ss)}`;
+}
+function formatMinutes(seconds: number) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}ชม. ${m}น.`;
+    return `${m} น.`;
 }
 function pctColor(pct: number) {
     if (pct >= 80) return "text-emerald-400";
@@ -81,6 +107,8 @@ function pctBorder(pct: number) {
     if (pct >= 50) return "border-amber-500/30";
     return "border-red-500/30";
 }
+
+
 
 /* ══════════════════════════════════════
    SUB-COMPONENTS
@@ -130,6 +158,38 @@ function actionMeta(action: ActionItem["action"]) {
     }
 }
 
+/* Time usage badge shown in history */
+function TimeUsageBadge({ spent, limit }: { spent: number; limit: number }) {
+    const limitSeconds = limit * 60;
+    const usedPct = limitSeconds > 0 ? Math.min((spent / limitSeconds) * 100, 100) : 0;
+    const spentFmt = formatMinutes(spent);
+    const limitFmt = `${limit} น.`;
+
+    let barColor = "bg-emerald-500/60";
+    let textColor = "text-emerald-400";
+    if (usedPct >= 95) { barColor = "bg-red-500/60"; textColor = "text-red-400"; }
+    else if (usedPct >= 75) { barColor = "bg-amber-500/60"; textColor = "text-amber-400"; }
+
+    return (
+        <div className="flex items-center gap-2 mt-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-neutral-600 shrink-0">
+                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            </svg>
+            <div className="flex-1 flex items-center gap-1.5 min-w-0">
+                <div className="flex-1 h-1 bg-neutral-800 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${usedPct}%` }} />
+                </div>
+                <span className={`text-[10px] font-semibold tabular-nums shrink-0 ${textColor}`}>
+                    {spentFmt}
+                </span>
+                <span className="text-[10px] text-neutral-700 shrink-0">/ {limitFmt}</span>
+            </div>
+        </div>
+    );
+}
+
+
+
 /* ══════════════════════════════════════
    MAIN COMPONENT
 ══════════════════════════════════════ */
@@ -159,6 +219,8 @@ export default function MockTestClient({ subjects, history, stats, initialActive
     const [isSavingNote, setIsSavingNote] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [expandedHistory, setExpandedHistory] = useState<number | null>(null);
+    const [deletingId, setDeletingId] = useState<number | null>(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
     /* ── Derived ── */
     const subject = subjects.find(s => s.id === Number(selectedSubject));
@@ -171,6 +233,8 @@ export default function MockTestClient({ subjects, history, stats, initialActive
     /* ── Refs ── */
     const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const phaseRef = useRef(phase);
+
+
 
     /* ══════════════════════════════════════
        EFFECTS
@@ -233,6 +297,8 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         return () => clearInterval(id);
     }, []);
 
+
+
     /* ══════════════════════════════════════
        HANDLERS
     ══════════════════════════════════════ */
@@ -244,7 +310,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         setTimeSpent(0);
         setForcedScoring(false);
         setPhase("running");
-        await startMockTest({ subjectId: Number(selectedSubject) });
+        await startMockTest({ subjectId: Number(selectedSubject), timeLimitMinutes: inputHours * 60 + inputMinutes });
     };
 
     const handleTogglePause = async () => {
@@ -380,6 +446,24 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         }, 300);
     };
 
+    const handleDeleteHistory = async (id: number) => {
+        setDeletingId(id);
+        try {
+            const res = await deleteTestHistory(id);
+            if (!res.success) alert("ลบไม่สำเร็จ");
+        } finally {
+            setDeletingId(null);
+            setConfirmDeleteId(null);
+        }
+    };
+
+    const openNoteModal = () => {
+        setShowNotes(true);
+        requestAnimationFrame(() => setNoteModalVisible(true));
+    };
+
+
+
     /* ══════════════════════════════════════
        RENDER
     ══════════════════════════════════════ */
@@ -459,7 +543,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                     {phase === "running" ? "พัก" : "ทำต่อ"}
                                 </button>
                                 <button
-                                    onClick={() => { setShowNotes(true); requestAnimationFrame(() => setNoteModalVisible(true)); }}
+                                    onClick={openNoteModal}
                                     className="cursor-pointer relative w-11 h-11 rounded-xl bg-emerald-500 hover:bg-emerald-400 flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -494,12 +578,27 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                         </svg>
                                     )}
                                 </div>
-                                <div>
+                                <div className="flex-1 min-w-0">
                                     <p className="text-sm font-bold text-white">
                                         {forcedScoring ? "หมดเวลาสอบ" : "ส่งข้อสอบแล้ว"}
                                     </p>
                                     <p className="text-xs text-neutral-500 font-mono">{subject?.name}</p>
                                 </div>
+                                {/* Note button in scoring phase */}
+                                <button
+                                    onClick={openNoteModal}
+                                    className="cursor-pointer relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-colors text-xs font-semibold shrink-0"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                    </svg>
+                                    บันทึกโน้ต
+                                    {localImages.length > 0 && (
+                                        <span className="w-4 h-4 rounded-full bg-violet-500 text-white text-[9px] font-black flex items-center justify-center">
+                                            {localImages.length}
+                                        </span>
+                                    )}
+                                </button>
                             </div>
 
                             {!forcedScoring && (
@@ -553,6 +652,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                             </form>
                         </div>
                     )}
+
                 </div>
 
                 {/* Stats sidebar */}
@@ -589,6 +689,9 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                             {history.length > 0 ? history.map(item => {
                                 const p = (item.score / item.subject.fullScore) * 100;
                                 const expanded = expandedHistory === item.id;
+                                const isDeleting = deletingId === item.id;
+                                const isConfirming = confirmDeleteId === item.id;
+
                                 return (
                                     <div key={item.id} className={`border rounded-xl p-4 hover:border-neutral-700 transition-colors ${pctBorder(p)}`}>
                                         <div className="flex items-start justify-between gap-3">
@@ -597,16 +700,53 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                                 <p className="text-[11px] text-neutral-600 font-mono mt-0.5">
                                                     {dayjs(item.testDate).format("D MMM BBBB · h:mm A")}
                                                 </p>
+                                                {/* ── Time usage badge ── */}
+                                                {item.timeLimitMinutes > 0 && (
+                                                    <TimeUsageBadge
+                                                        spent={item.timeSpentSeconds}
+                                                        limit={item.timeLimitMinutes}
+                                                    />
+                                                )}
                                                 {item.notes && (
                                                     <p className="text-xs text-neutral-500 mt-2 border-l-2 border-neutral-700 pl-2 italic line-clamp-2">
                                                         {item.notes}
                                                     </p>
                                                 )}
                                             </div>
-                                            <div className="text-right shrink-0">
-                                                <span className={`text-2xl font-black tabular-nums ${pctColor(p)}`}>{item.score}</span>
-                                                <p className="text-[10px] text-neutral-600 mt-0.5">/ {item.subject.fullScore}</p>
-                                                <p className={`text-[10px] font-bold mt-0.5 ${pctColor(p)}`}>{p.toFixed(0)}%</p>
+                                            <div className="flex flex-col items-end gap-2 shrink-0">
+                                                <div className="text-right">
+                                                    <span className={`text-2xl font-black tabular-nums ${pctColor(p)}`}>{item.score}</span>
+                                                    <p className="text-[10px] text-neutral-600 mt-0.5">/ {item.subject.fullScore}</p>
+                                                    <p className={`text-[10px] font-bold mt-0.5 ${pctColor(p)}`}>{p.toFixed(0)}%</p>
+                                                </div>
+                                                {/* Delete button */}
+                                                {isConfirming ? (
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={() => handleDeleteHistory(item.id)}
+                                                            disabled={isDeleting}
+                                                            className="cursor-pointer px-2 py-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] font-bold hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                                                        >
+                                                            {isDeleting ? "..." : "ลบ"}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setConfirmDeleteId(null)}
+                                                            className="cursor-pointer px-2 py-1 rounded-lg bg-neutral-800 text-neutral-400 text-[10px] font-bold hover:bg-neutral-700 transition-colors"
+                                                        >
+                                                            ยกเลิก
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setConfirmDeleteId(item.id)}
+                                                        className="cursor-pointer w-7 h-7 rounded-lg bg-neutral-800/80 border border-neutral-700/50 text-neutral-600 hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-colors flex items-center justify-center"
+                                                        title="ลบประวัตินี้"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                                            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                                        </svg>
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                         <ScoreBar score={item.score} fullScore={item.subject.fullScore} />
@@ -667,6 +807,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                             )}
                         </div>
                     )}
+
                     {activeTab === "stats" && (
                         <div className="space-y-3">
                             {stats.length > 0 ? stats.map(stat => {
@@ -707,10 +848,11 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                 </div>
                                 <div>
                                     <h2 className="text-base font-bold text-white">Quick Notes</h2>
-                                    <p className="text-[11px] text-neutral-500">จดระหว่างทำข้อสอบ</p>
+                                    <p className="text-[11px] text-neutral-500">
+                                        {phase === "scoring" ? "บันทึกระหว่างตรวจ" : "จดระหว่างทำข้อสอบ"}
+                                    </p>
                                 </div>
                             </div>
-                            {/* ปุ่มปิดทำงานได้เสมอ */}
                             <button onClick={resetNoteModal}
                                 className="cursor-pointer w-9 h-9 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors flex items-center justify-center text-sm">
                                 ✕
@@ -833,7 +975,6 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                             : <span className="text-neutral-700">ยังไม่มีรูป</span>
                                 }
                             </p>
-                            {/* disabled ถ้าไม่มีข้อมูล */}
                             <button onClick={handleSaveNote}
                                 disabled={isSavingNote || !noteHasContent}
                                 className="cursor-pointer px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-black text-sm font-bold transition-colors active:scale-95">

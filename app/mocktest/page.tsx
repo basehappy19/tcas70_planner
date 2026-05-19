@@ -23,6 +23,8 @@ export default async function MockTestPage() {
             notes: finishLog?.note ?? null,
             subject: test.subject,
             actions: test.actions,
+            timeLimitMinutes: test.timeLimitMinutes,
+            timeSpentSeconds: test.timeSpentSeconds,
         };
     });
 
@@ -56,7 +58,7 @@ export default async function MockTestPage() {
     const activeTest = await getActiveTestState();
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans px-4 pb-24 md:pb-0">
+        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans px-4">
             <div className="max-w-6xl mx-auto py-8">
                 <div className="mb-8">
                     <h1 className="text-2xl font-black text-white tracking-tight">ระบบจำลองสอบ</h1>

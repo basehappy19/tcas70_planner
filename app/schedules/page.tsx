@@ -22,7 +22,7 @@ export default async function SchedulePage() {
     const totalSessions = allSchedules.length;
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans px-4 pb-24 md:pb-0">
+        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans px-4">
             <div className="max-w-6xl mx-auto py-8">
 
                 {/* Header */}

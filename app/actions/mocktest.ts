@@ -8,6 +8,8 @@ export type ActiveTestState = {
     id: number;
     subjectId: number;
     status: MockTestStatus;
+    timeLimitMinutes: number;
+    timeSpentSeconds: number;
 } | null;
 
 function getThaiNow() {
@@ -19,6 +21,28 @@ async function getActiveSession() {
         where: { status: { in: ["RUNNING", "PAUSED", "SCORING"] } },
         orderBy: { id: "desc" },
     });
+}
+
+async function updateTimeSpent(mockTestId: number) {
+    const lastRunAction = await prisma.mockTestActionLog.findFirst({
+        where: {
+            mockTestId,
+            action: { in: ["START", "RESUME"] }
+        },
+        orderBy: { time: "desc" }
+    });
+
+    if (lastRunAction) {
+        const now = getThaiNow();
+        const elapsedSeconds = Math.floor((now.getTime() - lastRunAction.time.getTime()) / 1000);
+
+        if (elapsedSeconds > 0) {
+            await prisma.mockTest.update({
+                where: { id: mockTestId },
+                data: { timeSpentSeconds: { increment: elapsedSeconds } }
+            });
+        }
+    }
 }
 
 async function createSnapshot(
@@ -51,14 +75,17 @@ export async function getActiveTestState(): Promise<ActiveTestState> {
         id: active.id,
         subjectId: active.subjectId,
         status: active.status,
+        timeLimitMinutes: active.timeLimitMinutes,
+        timeSpentSeconds: active.timeSpentSeconds,
     };
 }
 
-export async function startMockTest(data: { subjectId: number }) {
+export async function startMockTest(data: { subjectId: number; timeLimitMinutes: number }) {
     const now = getThaiNow();
     const session = await prisma.mockTest.create({
         data: {
             subjectId: data.subjectId,
+            timeLimitMinutes: data.timeLimitMinutes,
             status: "RUNNING",
             createdAt: now,
             updatedAt: now,
@@ -73,6 +100,10 @@ export async function togglePauseResumeMockTest(action: "PAUSE" | "RESUME") {
     const active = await getActiveSession();
     if (!active) return { success: false };
 
+    if (action === "PAUSE" && active.status === "RUNNING") {
+        await updateTimeSpent(active.id);
+    }
+
     const newStatus = action === "PAUSE" ? "PAUSED" : "RUNNING";
     const updated = await prisma.mockTest.update({
         where: { id: active.id },
@@ -86,6 +117,10 @@ export async function togglePauseResumeMockTest(action: "PAUSE" | "RESUME") {
 export async function enterScoringPhase() {
     const active = await getActiveSession();
     if (!active) return { success: false };
+
+    if (active.status === "RUNNING") {
+        await updateTimeSpent(active.id);
+    }
 
     const updated = await prisma.mockTest.update({
         where: { id: active.id },
@@ -168,4 +203,25 @@ export async function backToRunning() {
     await createSnapshot(updated.id, "RESUME");
     revalidatePath("/mocktest");
     return { success: true };
+}
+
+export async function deleteTestHistory(id: number) {
+    try {
+        await prisma.$transaction([
+            prisma.mockTestImage.deleteMany({
+                where: { actionLog: { mockTestId: id } },
+            }),
+            prisma.mockTestActionLog.deleteMany({
+                where: { mockTestId: id },
+            }),
+            prisma.mockTest.delete({
+                where: { id },
+            }),
+        ]);
+        revalidatePath("/mocktest");
+        return { success: true };
+    } catch (e) {
+        console.error(e);
+        return { success: false, message: "ลบข้อมูลไม่สำเร็จ" };
+    }
 }
