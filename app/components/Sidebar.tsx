@@ -118,26 +118,7 @@ export default function Sidebar() {
                     })}
                 </nav>
 
-                {/* Bottom card */}
-                <div className="p-4 pb-6">
-                    <div className="rounded-3xl overflow-hidden bg-linear-to-br from-emerald-400 via-teal-400 to-cyan-400 p-px shadow-[0_10px_30px_rgba(16,185,129,0.25)]">
-                        <div className="rounded-[23px] bg-white px-5 py-5">
-                            <p className="text-xs font-black tracking-[0.18em] uppercase text-emerald-500 mb-2">
-                                Focus Mode
-                            </p>
-
-                            <h3 className="text-sm font-black text-stone-800 leading-snug">
-                                วางแผนดีขึ้น
-                                <br />
-                                อ่านหนังสือสม่ำเสมอ
-                            </h3>
-
-                            <p className="text-xs text-stone-400 mt-2 leading-relaxed">
-                                จัดตาราง · จับเวลา · จดโน้ต ได้ในที่เดียว
-                            </p>
-                        </div>
-                    </div>
-                </div>
+                
             </aside>
 
             {/* Mobile Topbar */}
