@@ -31,7 +31,6 @@ type Props = {
     initialStatus: "IDLE" | "STUDYING" | "PAUSED";
 };
 
-// 🌟 สร้าง Type สำหรับเก็บข้อมูลรูปภาพพร้อมคำอธิบาย
 type NoteImageData = {
     file: File;
     preview: string;
@@ -52,15 +51,15 @@ const timeToMinutes = (time: string) => {
     return h * 60 + m;
 };
 
-const TYPE_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
-    'ติว': { bg: "bg-blue-500/15", text: "text-blue-400", dot: "bg-blue-400" },
-    'เวลาว่าง': { bg: "bg-emerald-500/15", text: "text-emerald-400", dot: "bg-emerald-400" },
-    'ลองสอบ': { bg: "bg-violet-500/15", text: "text-violet-400", dot: "bg-violet-400" },
-    'อื่น ๆ': { bg: "bg-pink-500/15", text: "text-pink-400", dot: "bg-pink-400" },
-    'DEFAULT': { bg: "bg-neutral-700/40", text: "text-neutral-300", dot: "bg-neutral-400" },
+const TYPE_COLORS: Record<string, { bg: string; text: string; dot: string; border: string }> = {
+    'ติว':      { bg: "bg-blue-50",    text: "text-blue-600",    dot: "bg-blue-400",    border: "border-blue-200" },
+    'เวลาว่าง': { bg: "bg-emerald-50", text: "text-emerald-600", dot: "bg-emerald-400", border: "border-emerald-200" },
+    'ลองสอบ':  { bg: "bg-violet-50",  text: "text-violet-600",  dot: "bg-violet-400",  border: "border-violet-200" },
+    'อื่น ๆ':   { bg: "bg-orange-50",  text: "text-orange-600",  dot: "bg-orange-400",  border: "border-orange-200" },
+    'DEFAULT':  { bg: "bg-stone-100",  text: "text-stone-500",   dot: "bg-stone-400",   border: "border-stone-200" },
 };
 
-const getTypeColor = (type: string) => TYPE_COLORS[type?.toUpperCase()] ?? TYPE_COLORS.DEFAULT;
+const getTypeColor = (type: string) => TYPE_COLORS[type] ?? TYPE_COLORS.DEFAULT;
 
 export default function HeroSection({ allSchedules, initialTime, initialStatus }: Props) {
     const [currentTime, setCurrentTime] = useState(initialTime);
@@ -119,19 +118,18 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
         return null;
     }, [allSchedules]);
 
-    const [currentSchedule, setCurrentSchedule] = useState(() => getCurrentSchedule(dayjs().day(), timeToMinutes(dayjs().format("HH:mm"))));
+    const [currentSchedule, setCurrentSchedule] = useState(() =>
+        getCurrentSchedule(dayjs().day(), timeToMinutes(dayjs().format("HH:mm")))
+    );
 
     useEffect(() => {
         const syncStatusInterval = setInterval(async () => {
             const serverStatus = await getCurrentSessionState();
             setStatus(currentStatus => {
-                if (serverStatus !== currentStatus) {
-                    return serverStatus;
-                }
+                if (serverStatus !== currentStatus) return serverStatus;
                 return currentStatus;
             });
         }, 3000);
-
         return () => clearInterval(syncStatusInterval);
     }, []);
 
@@ -145,13 +143,7 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
             setNowMinutes(mins);
 
             setCurrentSchedule(current => {
-                if (
-                    status !== "IDLE" &&
-                    current &&
-                    timeToMinutes(current.endTime) > mins
-                ) {
-                    return current;
-                }
+                if (status !== "IDLE" && current && timeToMinutes(current.endTime) > mins) return current;
                 return getCurrentSchedule(dow, mins);
             });
 
@@ -166,66 +158,48 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
 
     const getTimeUntilNextSchedule = () => {
         if (!nextSchedule) return null;
-
         const now = dayjs();
         let target = dayjs()
             .day(nextSchedule.dayOfWeek)
             .hour(Number(nextSchedule.startTime.split(":")[0]))
             .minute(Number(nextSchedule.startTime.split(":")[1]))
             .second(0);
-
-        if (nextSchedule._offsetDays) {
-            target = target.add(nextSchedule._offsetDays, "day");
-        }
-
+        if (nextSchedule._offsetDays) target = target.add(nextSchedule._offsetDays, "day");
         const diffSeconds = target.diff(now, "second");
-
         if (diffSeconds <= 0) return "กำลังจะเริ่ม";
-
         const hours = Math.floor(diffSeconds / 3600);
         const minutes = Math.floor((diffSeconds % 3600) / 60);
         const seconds = diffSeconds % 60;
-
-        if (hours > 0) {
-            return `อีก ${hours} ชม. ${minutes} นาที ${seconds} วิ`;
-        }
-
-        if (minutes > 0) {
-            return `อีก ${minutes} นาที ${seconds} วิ`;
-        }
-
+        if (hours > 0) return `อีก ${hours} ชม. ${minutes} น. ${seconds} วิ`;
+        if (minutes > 0) return `อีก ${minutes} น. ${seconds} วิ`;
         return `อีก ${seconds} วิ`;
     };
 
     const prevSchedule = getPrevSchedule(nowDow, nowMinutes);
     const nextSchedule = getNextSchedule(nowDow, nowMinutes) as (Schedule & { _offsetDays?: number }) | null;
     const nextScheduleCountdown = getTimeUntilNextSchedule();
-    const daySchedules = allSchedules.filter(s => s.dayOfWeek === selectedDay).sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+    const daySchedules = allSchedules
+        .filter(s => s.dayOfWeek === selectedDay)
+        .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
     const handleStartStudy = async () => {
         if (!currentSchedule?.id) return;
         const res = await createStudySession({ scheduleId: currentSchedule.id });
-        if (res.success) {
-            setStatus("STUDYING");
-        }
+        if (res.success) setStatus("STUDYING");
     };
 
     const handleEndSession = async () => {
         setIsSaving(true);
-
         if (status === "IDLE" && currentSchedule?.id) {
             await createStudySession({ scheduleId: currentSchedule.id });
         }
-
         await addActionLogToDB("END_SESSION");
         const res = await finishStudySession();
         setIsSaving(false);
-
         if (res.success || status === "IDLE") {
             const now = dayjs();
             const dow = now.day();
             const mins = timeToMinutes(now.format("HH:mm"));
-
             setStatus("IDLE");
             setCurrentSchedule(getCurrentSchedule(dow, mins));
             setNowDow(dow);
@@ -271,181 +245,212 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
 
     const resetNoteModal = () => {
         setNoteModalVisible(false);
-
         setTimeout(() => {
             setNoteText("");
             setNoteError(false);
-
-            images.forEach(img =>
-                URL.revokeObjectURL(img.preview)
-            );
-
+            images.forEach(img => URL.revokeObjectURL(img.preview));
             setImages([]);
             setShowNoteModal(false);
         }, 250);
     };
 
+    /* ── Status pill config ── */
+    const statusConfig = {
+        IDLE:     { label: "ว่าง",         dot: "bg-stone-400",    pill: "bg-stone-100 text-stone-500 border-stone-200" },
+        STUDYING: { label: "กำลังเรียน",   dot: "bg-emerald-500",  pill: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+        PAUSED:   { label: "พักเบรก",      dot: "bg-orange-400",   pill: "bg-orange-50 text-orange-600 border-orange-200" },
+    };
+    const sc = statusConfig[status];
+
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white px-4 py-8 font-sans">
-            <div className="max-w-6xl mx-auto space-y-5">
+        <div className="min-h-screen bg-[#FAFAF7] text-stone-800 px-4 py-8 font-sans">
+            <div className="max-w-6xl mx-auto space-y-4">
 
                 {/* ── Header ── */}
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-start justify-between">
                     <div>
-                        <p className="text-xs text-neutral-500 uppercase tracking-widest mb-0.5">TCAS 70 Planner</p>
+                        <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-stone-400 mb-1">
+                            TCAS 70 · Planner
+                        </p>
                         <p
-                            className="text-4xl font-mono font-bold text-white tabular-nums"
+                            className="text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none"
                             suppressHydrationWarning
                         >
                             {currentTime}
                         </p>
-                        <p className="text-sm text-neutral-500 mt-1">
+                        <p className="text-sm text-stone-400 mt-2 font-medium">
                             {DAY_FULL_TH[nowDow]}ที่ {dayjs().format("D MMMM BBBB")}
                         </p>
                     </div>
-                    <div className={`w-3 h-3 rounded-full ${status === "STUDYING" ? "bg-emerald-400 animate-pulse" : status === "PAUSED" ? "bg-amber-400 animate-pulse" : "bg-neutral-700"}`} />
+
+                    {/* Status pill */}
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mt-1 ${sc.pill}`}>
+                        <span className={`w-2 h-2 rounded-full ${sc.dot} ${status !== "IDLE" ? "animate-pulse" : ""}`} />
+                        {sc.label}
+                    </div>
                 </div>
 
                 {/* ── Current Schedule Card ── */}
                 {currentSchedule ? (
-                    <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6 relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-0.5 bg-linear-to-r from-emerald-500 via-emerald-400 to-transparent" />
-                        <div className="flex items-start justify-between mb-4">
-                            <div>
-                                <span className="text-xs text-emerald-400 font-semibold uppercase tracking-widest">ชั่วโมงนี้</span>
-                                <h2 className="text-2xl font-black text-white mt-1">{currentSchedule.title}</h2>
+                    <div className="rounded-3xl bg-white shadow-[0_2px_24px_rgba(0,0,0,0.07)] border border-stone-100 overflow-hidden">
+                        {/* colored top accent */}
+                        <div className={`h-1.5 w-full ${
+                            status === "STUDYING" ? "bg-linear-to-r from-emerald-400 to-teal-300" :
+                            status === "PAUSED"   ? "bg-linear-to-r from-orange-400 to-amber-300" :
+                                                   "bg-linear-to-r from-stone-200 to-stone-100"
+                        }`} />
+
+                        <div className="p-6">
+                            <div className="flex items-start justify-between mb-1">
+                                <span className="text-[10px] font-black tracking-[0.18em] uppercase text-emerald-600">
+                                    ชั่วโมงนี้
+                                </span>
+                                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${getTypeColor(currentSchedule.type).bg} ${getTypeColor(currentSchedule.type).text} ${getTypeColor(currentSchedule.type).border}`}>
+                                    {currentSchedule.type}
+                                </span>
                             </div>
-                            <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${getTypeColor(currentSchedule.type).bg} ${getTypeColor(currentSchedule.type).text}`}>
-                                {currentSchedule.type}
-                            </span>
-                        </div>
 
-                        <div className="flex items-center gap-3 text-sm font-mono text-neutral-300 mb-6">
-                            <span className="bg-neutral-800 px-3 py-1.5 rounded-lg">{formatTo12Hour(currentSchedule.startTime)}</span>
-                            <span className="text-neutral-600">—</span>
-                            <span className="bg-neutral-800 px-3 py-1.5 rounded-lg">{formatTo12Hour(currentSchedule.endTime)}</span>
-                        </div>
+                            <h2 className="text-2xl font-black text-stone-800 mt-1 mb-4 leading-tight">
+                                {currentSchedule.title}
+                            </h2>
 
-                        {status === "IDLE" && currentSchedule.type === "ติว" ? (
-                            <button
-                                onClick={handleStartStudy}
-                                className="cursor-pointer w-full bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-neutral-950 font-black py-3.5 rounded-xl text-base transition-all"
-                            >
-                                เริ่มติวเลย →
-                            </button>
-                        ) : (
-                            <div className="space-y-3">
-                                <div className={`flex justify-between items-center px-4 py-3 rounded-xl border text-sm ${status === "IDLE" ? "border-neutral-700 bg-neutral-800/40" : status === "STUDYING" ? "border-emerald-500/25 bg-emerald-500/8" : "border-amber-500/25 bg-amber-500/8"}`}>
-                                    <div className="flex items-center gap-2.5">
-                                        {status !== "IDLE" && (
-                                            <span className="relative flex h-2.5 w-2.5">
-                                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${status === "STUDYING" ? "bg-emerald-400" : "bg-amber-400"}`} />
-                                                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${status === "STUDYING" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                            <div className="flex items-center gap-2 mb-6">
+                                <span className="bg-stone-50 border border-stone-200 text-stone-600 text-sm font-mono px-3 py-1.5 rounded-xl">
+                                    {formatTo12Hour(currentSchedule.startTime)}
+                                </span>
+                                <span className="text-stone-300 font-light">—</span>
+                                <span className="bg-stone-50 border border-stone-200 text-stone-600 text-sm font-mono px-3 py-1.5 rounded-xl">
+                                    {formatTo12Hour(currentSchedule.endTime)}
+                                </span>
+                            </div>
+
+                            {status === "IDLE" && currentSchedule.type === "ติว" ? (
+                                <button
+                                    onClick={handleStartStudy}
+                                    className="cursor-pointer w-full bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-white font-black py-3.5 rounded-2xl text-base transition-all shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.4)]"
+                                >
+                                    เริ่มติวเลย →
+                                </button>
+                            ) : (
+                                <div className="space-y-3">
+                                    {/* Status row */}
+                                    <div className={`flex justify-between items-center px-4 py-3 rounded-2xl border text-sm ${
+                                        status === "STUDYING"
+                                            ? "border-emerald-200 bg-emerald-50"
+                                            : status === "PAUSED"
+                                                ? "border-orange-200 bg-orange-50"
+                                                : "border-stone-200 bg-stone-50"
+                                    }`}>
+                                        <div className="flex items-center gap-2.5">
+                                            {status !== "IDLE" && (
+                                                <span className="relative flex h-2.5 w-2.5">
+                                                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-50 ${status === "STUDYING" ? "bg-emerald-400" : "bg-orange-400"}`} />
+                                                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${status === "STUDYING" ? "bg-emerald-500" : "bg-orange-400"}`} />
+                                                </span>
+                                            )}
+                                            <span className={`font-semibold text-sm ${
+                                                status === "IDLE" ? "text-stone-500" :
+                                                status === "STUDYING" ? "text-emerald-700" :
+                                                "text-orange-600"
+                                            }`}>
+                                                {status === "IDLE" ? `คาบ${currentSchedule.type}` :
+                                                 status === "STUDYING" ? "กำลังเรียนอยู่" : "พักเบรก"}
                                             </span>
-                                        )}
-                                        <span className={`font-semibold ${status === "IDLE" ? "text-neutral-400" : status === "STUDYING" ? "text-emerald-400" : "text-amber-400"}`}>
-                                            {status === "IDLE" ? `คาบ${currentSchedule.type}` : status === "STUDYING" ? "กำลังเรียน" : "พักเบรก"}
-                                        </span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => {
-                                                setShowNoteModal(true);
-
-                                                requestAnimationFrame(() => {
-                                                    setNoteModalVisible(true);
-                                                });
-                                            }}
-                                            className="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 transition-colors"
-                                        >
-                                            จดโน้ต
-                                        </button>
-                                        {status !== "IDLE" && (
+                                        </div>
+                                        <div className="flex gap-2">
                                             <button
                                                 onClick={() => {
-                                                    const next = status === "STUDYING" ? "PAUSED" : "STUDYING";
-                                                    setStatus(next);
-                                                    addActionLogToDB(next === "STUDYING" ? "RESUME" : "PAUSE");
+                                                    setShowNoteModal(true);
+                                                    requestAnimationFrame(() => setNoteModalVisible(true));
                                                 }}
-                                                className="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-semibold bg-neutral-800 text-neutral-200 hover:bg-neutral-700 transition-colors"
+                                                className="cursor-pointer px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors border border-blue-200"
                                             >
-                                                {status === "STUDYING" ? "พัก" : "เรียนต่อ"}
+                                                จดโน้ต
                                             </button>
-                                        )}
+                                            {status !== "IDLE" && (
+                                                <button
+                                                    onClick={() => {
+                                                        const next = status === "STUDYING" ? "PAUSED" : "STUDYING";
+                                                        setStatus(next);
+                                                        addActionLogToDB(next === "STUDYING" ? "RESUME" : "PAUSE");
+                                                    }}
+                                                    className="cursor-pointer px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-100 text-stone-600 hover:bg-stone-200 transition-colors border border-stone-200"
+                                                >
+                                                    {status === "STUDYING" ? "พัก" : "เรียนต่อ"}
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                                <button
-                                    onClick={handleEndSession}
-                                    disabled={!canEndSession || isSaving}
-                                    className={`w-full py-3 rounded-xl text-sm font-bold transition-all border ${canEndSession && !isSaving
-                                        ? "cursor-pointer border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white hover:border-rose-500"
-                                        : "cursor-not-allowed border-neutral-800 bg-transparent text-neutral-600"
+
+                                    <button
+                                        onClick={handleEndSession}
+                                        disabled={!canEndSession || isSaving}
+                                        className={`w-full py-3 rounded-2xl text-sm font-bold transition-all border ${
+                                            canEndSession && !isSaving
+                                                ? "cursor-pointer border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white hover:border-rose-500 hover:shadow-[0_4px_16px_rgba(244,63,94,0.25)]"
+                                                : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-300"
                                         }`}
-                                >
-                                    {isSaving ? "กำลังบันทึก..." : canEndSession ? (status === "IDLE" ? "จบคาบ" : "จบชั่วโมงการเรียน") : `ยังไม่ถึงเวลาจบ · ${formatTo12Hour(currentSchedule.endTime)}`}
-                                </button>
-                            </div>
-                        )}
+                                    >
+                                        {isSaving ? "กำลังบันทึก..." :
+                                         canEndSession ? (status === "IDLE" ? "จบคาบ" : "จบชั่วโมงการเรียน") :
+                                         `ยังไม่ถึงเวลาจบ · ${formatTo12Hour(currentSchedule.endTime)}`}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 ) : (
-                    <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-8 text-center">
-                        <div className="text-4xl mb-3">☕</div>
-                        <h2 className="text-xl font-bold text-white mb-1">เวลาพักผ่อน</h2>
-                        <p className="text-sm text-neutral-500">ขณะนี้ไม่มีตารางติว</p>
+                    <div className="rounded-3xl bg-white shadow-[0_2px_24px_rgba(0,0,0,0.06)] border border-stone-100 p-10 text-center">
+                        <div className="text-5xl mb-3">☕</div>
+                        <h2 className="text-xl font-black text-stone-700 mb-1">เวลาพักผ่อน</h2>
+                        <p className="text-sm text-stone-400">ขณะนี้ไม่มีตารางติว</p>
                     </div>
                 )}
 
                 {/* ── Prev / Next strip ── */}
                 <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4">
-                        <p className="text-xs text-neutral-500 mb-2 font-medium">◂ ก่อนหน้า</p>
-                        {prevSchedule ? (
-                            <>
-                                <p className="text-sm font-bold text-neutral-200 leading-tight">{prevSchedule.title}</p>
-                                <p className="text-xs text-neutral-500 mt-1 font-mono">
-                                    {DAY_NAMES_TH[prevSchedule.dayOfWeek]} {formatTo12Hour(prevSchedule.startTime)}–{formatTo12Hour(prevSchedule.endTime)}
-                                </p>
-                                <span className={`mt-2 inline-block text-xs px-2 py-0.5 rounded-full font-medium ${getTypeColor(prevSchedule.type).bg} ${getTypeColor(prevSchedule.type).text}`}>
-                                    {prevSchedule.type}
-                                </span>
-                            </>
-                        ) : (
-                            <p className="text-xs text-neutral-600">ไม่มีข้อมูล</p>
-                        )}
-                    </div>
-                    <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-4">
-                        <p className="text-xs text-neutral-500 mb-2 font-medium">ถัดไป ▸</p>
-                        {nextSchedule ? (
-                            <>
-                                <p className="text-sm font-bold text-neutral-200 leading-tight">{nextSchedule.title}</p>
-                                <div className="mt-1 space-y-1">
-                                    <p className="text-xs text-neutral-500 font-mono">
-                                        {nextSchedule._offsetDays
-                                            ? `${todayLabel((nowDow + (nextSchedule._offsetDays ?? 0)) % 7)} `
-                                            : ""
-                                        }
-                                        {formatTo12Hour(nextSchedule.startTime)}–{formatTo12Hour(nextSchedule.endTime)}
+                    {[
+                        { label: "◂ ก่อนหน้า", schedule: prevSchedule, isNext: false },
+                        { label: "ถัดไป ▸",    schedule: nextSchedule,  isNext: true  },
+                    ].map(({ label, schedule, isNext }) => (
+                        <div
+                            key={label}
+                            className="rounded-2xl bg-white border border-stone-100 shadow-[0_1px_12px_rgba(0,0,0,0.05)] p-4"
+                        >
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">
+                                {label}
+                            </p>
+                            {schedule ? (
+                                <>
+                                    <p className="text-sm font-bold text-stone-700 leading-tight">
+                                        {schedule.title}
                                     </p>
-
-                                    {nextScheduleCountdown && (
-                                        <p suppressHydrationWarning className="text-[11px] text-emerald-400 font-semibold">
+                                    <p className="text-xs text-stone-400 mt-1 font-mono">
+                                        {isNext && (schedule as Schedule & { _offsetDays?: number })._offsetDays
+                                            ? `${todayLabel((nowDow + ((schedule as Schedule & { _offsetDays?: number })._offsetDays ?? 0)) % 7)} `
+                                            : !isNext ? `${DAY_NAMES_TH[schedule.dayOfWeek]} ` : ""}
+                                        {formatTo12Hour(schedule.startTime)}–{formatTo12Hour(schedule.endTime)}
+                                    </p>
+                                    {isNext && nextScheduleCountdown && (
+                                        <p suppressHydrationWarning className="text-[11px] text-emerald-600 font-semibold mt-1">
                                             {nextScheduleCountdown}
                                         </p>
                                     )}
-                                </div>
-                                <span className={`mt-2 inline-block text-xs px-2 py-0.5 rounded-full font-medium ${getTypeColor(nextSchedule.type).bg} ${getTypeColor(nextSchedule.type).text}`}>
-                                    {nextSchedule.type}
-                                </span>
-                            </>
-                        ) : (
-                            <p className="text-xs text-neutral-600">ไม่มีข้อมูล</p>
-                        )}
-                    </div>
+                                    <span className={`mt-2.5 inline-block text-xs px-2 py-0.5 rounded-full font-semibold border ${getTypeColor(schedule.type).bg} ${getTypeColor(schedule.type).text} ${getTypeColor(schedule.type).border}`}>
+                                        {schedule.type}
+                                    </span>
+                                </>
+                            ) : (
+                                <p className="text-xs text-stone-300">ไม่มีข้อมูล</p>
+                            )}
+                        </div>
+                    ))}
                 </div>
 
                 {/* ── Weekly calendar ── */}
-                <div className="rounded-2xl border border-neutral-800 bg-neutral-900 overflow-hidden">
-                    <div className="grid grid-cols-7 border-b border-neutral-800">
+                <div className="rounded-3xl bg-white shadow-[0_2px_20px_rgba(0,0,0,0.06)] border border-stone-100 overflow-hidden">
+                    {/* Day tabs */}
+                    <div className="grid grid-cols-7 border-b border-stone-100">
                         {WEEK_ORDER.map(d => {
                             const hasClass = allSchedules.some(s => s.dayOfWeek === d);
                             const isToday = d === nowDow;
@@ -454,31 +459,42 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                                 <button
                                     key={d}
                                     onClick={() => setSelectedDay(d)}
-                                    className={`cursor-pointer py-3 text-center transition-colors relative ${isSelected ? "bg-neutral-800" : "hover:bg-neutral-800/50"}`}
+                                    className={`cursor-pointer py-3.5 text-center transition-all relative ${
+                                        isSelected ? "bg-stone-50" : "hover:bg-stone-50/70"
+                                    }`}
                                 >
-                                    <p className={`text-xs font-semibold ${isToday ? "text-emerald-400" : isSelected ? "text-white" : "text-neutral-500"}`}>
+                                    <p className={`text-xs font-bold ${
+                                        isToday ? "text-emerald-600" :
+                                        isSelected ? "text-stone-700" :
+                                        "text-stone-400"
+                                    }`}>
                                         {DAY_NAMES_TH[d]}
                                     </p>
                                     {hasClass && (
-                                        <div className={`mx-auto mt-1 w-1 h-1 rounded-full ${isToday ? "bg-emerald-400" : "bg-neutral-600"}`} />
+                                        <div className={`mx-auto mt-1.5 w-1.5 h-1.5 rounded-full ${
+                                            isToday ? "bg-emerald-400" : "bg-stone-300"
+                                        }`} />
                                     )}
                                     {isSelected && (
-                                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/20" />
+                                        <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-stone-800 rounded-full" />
                                     )}
                                 </button>
                             );
                         })}
                     </div>
 
+                    {/* Schedule list */}
                     <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                        <p className="text-sm font-semibold text-neutral-300">{todayLabel(selectedDay)}</p>
-                        <p className="text-xs text-neutral-500">{daySchedules.length} คาบ</p>
+                        <p className="text-sm font-black text-stone-700">{todayLabel(selectedDay)}</p>
+                        <span className="text-xs text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full font-medium">
+                            {daySchedules.length} คาบ
+                        </span>
                     </div>
 
                     <div className="px-4 pb-4 space-y-2">
                         {daySchedules.length === 0 ? (
-                            <div className="text-center py-6">
-                                <p className="text-sm text-neutral-600">ไม่มีตารางเรียน</p>
+                            <div className="text-center py-8">
+                                <p className="text-sm text-stone-300 font-medium">ไม่มีตารางเรียน</p>
                             </div>
                         ) : daySchedules.map(s => {
                             const isNow = s.dayOfWeek === nowDow &&
@@ -491,28 +507,29 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                             return (
                                 <div
                                     key={s.id}
-                                    className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${isNow
-                                        ? "border-emerald-500/30 bg-emerald-500/8"
-                                        : isPast
-                                            ? "border-neutral-800/50 bg-transparent opacity-40"
-                                            : "border-neutral-800 bg-neutral-800/30"
-                                        }`}
+                                    className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
+                                        isNow
+                                            ? "border-emerald-200 bg-emerald-50 shadow-[0_2px_12px_rgba(5,150,105,0.08)]"
+                                            : isPast
+                                                ? "border-stone-100 bg-transparent opacity-40"
+                                                : "border-stone-100 bg-stone-50/60 hover:bg-stone-50"
+                                    }`}
                                 >
                                     <div className={`w-1 self-stretch rounded-full ${isNow ? "bg-emerald-400" : colors.dot}`} />
                                     <div className="flex-1 min-w-0">
-                                        <p className={`text-sm font-semibold truncate ${isPast && !isNow ? "text-neutral-500" : "text-neutral-100"}`}>
+                                        <p className={`text-sm font-bold truncate ${isPast && !isNow ? "text-stone-400" : "text-stone-700"}`}>
                                             {s.title}
                                         </p>
-                                        <p className="text-xs text-neutral-500 font-mono mt-0.5">
+                                        <p className="text-xs text-stone-400 font-mono mt-0.5">
                                             {formatTo12Hour(s.startTime)} – {formatTo12Hour(s.endTime)}
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors.bg} ${colors.text}`}>
+                                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${colors.bg} ${colors.text} ${colors.border}`}>
                                             {s.type}
                                         </span>
                                         {isNow && (
-                                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold">
+                                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold shadow-sm">
                                                 ตอนนี้
                                             </span>
                                         )}
@@ -522,78 +539,73 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                         })}
                     </div>
                 </div>
+
             </div>
 
             {/* ── Note Modal ── */}
             {showNoteModal && (
                 <div
                     onClick={resetNoteModal}
-                    className={`fixed inset-0 z-50 backdrop-blur-md flex items-end sm:items-center justify-center p-4 transition-all duration-300 ${noteModalVisible
-                            ? "bg-black/40 opacity-100"
-                            : "bg-black/0 opacity-0"
-                        }`}
+                    className={`fixed inset-0 z-50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 transition-all duration-300 ${
+                        noteModalVisible ? "bg-black/20 opacity-100" : "bg-black/0 opacity-0"
+                    }`}
                 >
                     <div
-                        onClick={(e) => e.stopPropagation()}
-                        className={`w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/10 bg-[#121212]/95 shadow-[0_20px_80px_rgba(0,0,0,0.55)] transition-all duration-300 ${noteModalVisible
-                                ? "translate-y-0 scale-100 opacity-100"
-                                : "translate-y-6 scale-95 opacity-0"
-                            }`}
+                        onClick={e => e.stopPropagation()}
+                        className={`w-full max-w-2xl overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.15)] transition-all duration-300 ${
+                            noteModalVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-95 opacity-0"
+                        }`}
                     >
-                        {/* Header */}
-                        <div className="flex items-start justify-between px-6 pt-6 pb-5 border-b border-white/6">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-lg">📝</span>
+                        {/* Accent strip */}
+                        <div className="h-1.5 w-full bg-linear-to-r from-blue-400 via-violet-400 to-pink-400" />
 
-                                    <h3 className="text-xl font-black text-white">
+                        {/* Header */}
+                        <div className="flex items-start justify-between px-6 pt-5 pb-5 border-b border-stone-100">
+                            <div>
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-base">
+                                        📝
+                                    </div>
+                                    <h3 className="text-lg font-black text-stone-800">
                                         จดบันทึกระหว่างเรียน
                                     </h3>
                                 </div>
-
-                                <p className="text-sm text-neutral-500 mt-2">
+                                <p className="text-sm text-stone-400 mt-2 ml-10.5">
                                     บันทึกสูตร จุดที่ยังไม่เข้าใจ หรือสิ่งที่ต้องทบทวน
                                 </p>
                             </div>
-
                             <button
                                 onClick={resetNoteModal}
-                                className="cursor-pointer shrink-0 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition-colors flex items-center justify-center"
+                                className="cursor-pointer shrink-0 w-9 h-9 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center text-sm font-bold"
                             >
                                 ✕
                             </button>
                         </div>
 
                         {/* Body */}
-                        <div className="px-6 py-5 space-y-5">
+                        <div className="px-6 py-5 space-y-4">
                             <div>
                                 <textarea
                                     value={noteText}
-                                    onChange={(e) => {
+                                    onChange={e => {
                                         setNoteText(e.target.value);
-
-                                        if (noteError) {
-                                            setNoteError(false);
-                                        }
+                                        if (noteError) setNoteError(false);
                                     }}
                                     placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
-                                    className={`w-full min-h-45 bg-black/40 text-white text-sm leading-relaxed rounded-2xl border px-5 py-4 outline-none resize-none transition-all placeholder:text-neutral-600 ${noteError
-                                            ? "border-rose-500 focus:border-rose-400"
-                                            : "border-white/8 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-                                        }`}
+                                    className={`w-full min-h-36 bg-stone-50 text-stone-800 text-sm leading-relaxed rounded-2xl border px-4 py-3.5 outline-none resize-none transition-all placeholder:text-stone-300 ${
+                                        noteError
+                                            ? "border-rose-300 focus:border-rose-400 bg-rose-50/50"
+                                            : "border-stone-200 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                                    }`}
                                     autoFocus
                                 />
-
-                                <div className="flex items-center justify-between mt-2 px-1">
-
-                                    <p className="text-xs text-neutral-600">
-                                        {noteText.length}/1000
-                                    </p>
-                                </div>
+                                <p className="text-[11px] text-stone-300 mt-1.5 text-right font-mono">
+                                    {noteText.length}/1000
+                                </p>
                             </div>
 
-                            {/* Upload */}
-                            <div className="flex flex-wrap items-center gap-3">
+                            {/* Image upload */}
+                            <div>
                                 <input
                                     type="file"
                                     accept="image/*"
@@ -602,68 +614,51 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                                     ref={fileInputRef}
                                     onChange={handleImageChange}
                                 />
-
                                 <button
                                     type="button"
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/3 hover:bg-white/6 px-4 py-2.5 text-sm font-medium text-neutral-300 transition-colors"
+                                    className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-500 transition-colors"
                                 >
                                     <span>📷</span>
-
-                                    <span>แนบรูปภาพเพิ่ม</span>
+                                    <span>แนบรูปภาพ</span>
+                                    {images.length > 0 && (
+                                        <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-bold">
+                                            {images.length}
+                                        </span>
+                                    )}
                                 </button>
-
-                                {images.length > 0 && (
-                                    <div className="text-sm text-neutral-500">
-                                        {images.length} รูป
-                                    </div>
-                                )}
                             </div>
 
-                            {/* Images */}
+                            {/* Image list */}
                             {images.length > 0 && (
-                                <div className="grid gap-3 max-h-65 overflow-y-auto pr-1">
+                                <div className="space-y-2.5 max-h-60 overflow-y-auto">
                                     {images.map((img, index) => (
-                                        <div
-                                            key={index}
-                                            className="flex gap-4 rounded-2xl border border-white/6 bg-black/25 p-3"
-                                        >
+                                        <div key={index} className="flex gap-3.5 rounded-2xl border border-stone-100 bg-stone-50 p-3">
                                             <div className="relative shrink-0">
                                                 <Image
-                                                    width={88}
-                                                    height={88}
+                                                    width={80} height={80}
                                                     src={img.preview}
                                                     alt={`Preview ${index}`}
-                                                    className="w-22 h-22 rounded-xl object-cover border border-white/10"
+                                                    className="w-20 h-20 rounded-xl object-cover border border-stone-200"
                                                 />
-
                                                 <button
                                                     type="button"
-                                                    onClick={() =>
-                                                        handleRemoveImage(index)
-                                                    }
-                                                    className="cursor-pointer absolute -top-2 -right-2 w-6 h-6 rounded-full bg-rose-500 hover:bg-rose-400 text-white text-xs flex items-center justify-center shadow-lg transition-colors"
+                                                    onClick={() => handleRemoveImage(index)}
+                                                    className="cursor-pointer absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-400 text-white text-[10px] font-bold flex items-center justify-center shadow transition-colors"
                                                 >
                                                     ✕
                                                 </button>
                                             </div>
-
-                                            <div className="flex-1">
-                                                <p className="text-xs font-medium text-neutral-500 mb-2">
-                                                    คำอธิบายรูปภาพ
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">
+                                                    คำอธิบาย
                                                 </p>
-
                                                 <textarea
                                                     value={img.caption}
-                                                    onChange={(e) =>
-                                                        handleCaptionChange(
-                                                            index,
-                                                            e.target.value
-                                                        )
-                                                    }
-                                                    placeholder="เช่น สรุปสูตรหน้า 12 หรือโจทย์ที่ยังทำไม่ได้..."
+                                                    onChange={e => handleCaptionChange(index, e.target.value)}
+                                                    placeholder="เช่น สรุปสูตรหน้า 12..."
                                                     rows={3}
-                                                    className="w-full bg-transparent text-sm text-white placeholder:text-neutral-600 outline-none resize-none leading-relaxed"
+                                                    className="w-full bg-transparent text-sm text-stone-700 placeholder:text-stone-300 outline-none resize-none leading-relaxed"
                                                 />
                                             </div>
                                         </div>
@@ -672,8 +667,8 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                             )}
 
                             {noteError && (
-                                <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3">
-                                    <p className="text-sm text-rose-400 font-medium">
+                                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+                                    <p className="text-sm text-rose-500 font-semibold">
                                         ⚠️ กรุณากรอกข้อความหรือแนบรูปภาพก่อนบันทึก
                                     </p>
                                 </div>
@@ -681,102 +676,45 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                         </div>
 
                         {/* Footer */}
-                        <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-2">
+                        <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-1">
                             <button
                                 type="button"
                                 onClick={resetNoteModal}
                                 disabled={isUploading}
-                                className="cursor-pointer h-13 rounded-2xl border border-white/8 bg-white/3 hover:bg-white/6 text-sm font-bold text-neutral-300 transition-all disabled:opacity-50"
+                                className="cursor-pointer h-12 rounded-2xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-sm font-bold text-stone-500 transition-all disabled:opacity-50"
                             >
                                 ยกเลิก
                             </button>
-
                             <button
                                 onClick={async () => {
-                                    if (
-                                        !noteText.trim() &&
-                                        images.length === 0
-                                    ) {
+                                    if (!noteText.trim() && images.length === 0) {
                                         setNoteError(true);
                                         return;
                                     }
-
                                     setIsUploading(true);
-
-                                    let uploadedImages: {
-                                        url: string;
-                                        caption: string;
-                                    }[] = [];
-
+                                    let uploadedImages: { url: string; caption: string }[] = [];
                                     if (images.length > 0) {
-                                        const uploadPromises = images.map(
-                                            async (img) => {
-                                                const formData =
-                                                    new FormData();
-
-                                                formData.append(
-                                                    "file",
-                                                    img.file
-                                                );
-
-                                                const uploadRes =
-                                                    await uploadImageToDrive(
-                                                        formData
-                                                    );
-
-                                                return uploadRes.success
-                                                    ? {
-                                                        url: uploadRes.url,
-                                                        caption:
-                                                            img.caption,
-                                                    }
-                                                    : null;
-                                            }
-                                        );
-
-                                        const results =
-                                            await Promise.all(
-                                                uploadPromises
-                                            );
-
-                                        uploadedImages = results.filter(
-                                            (
-                                                res
-                                            ): res is {
-                                                url: string;
-                                                caption: string;
-                                            } => res !== null
-                                        );
-                                    }
-
-                                    if (
-                                        status === "IDLE" &&
-                                        currentSchedule?.id
-                                    ) {
-                                        await createStudySession({
-                                            scheduleId:
-                                                currentSchedule.id,
+                                        const uploadPromises = images.map(async img => {
+                                            const formData = new FormData();
+                                            formData.append("file", img.file);
+                                            const uploadRes = await uploadImageToDrive(formData);
+                                            return uploadRes.success ? { url: uploadRes.url, caption: img.caption } : null;
                                         });
-
+                                        const results = await Promise.all(uploadPromises);
+                                        uploadedImages = results.filter((res): res is { url: string; caption: string } => res !== null);
+                                    }
+                                    if (status === "IDLE" && currentSchedule?.id) {
+                                        await createStudySession({ scheduleId: currentSchedule.id });
                                         setStatus("STUDYING");
                                     }
-
-                                    await addActionLogToDB(
-                                        "TAKE_NOTE",
-                                        noteText,
-                                        uploadedImages
-                                    );
-
+                                    await addActionLogToDB("TAKE_NOTE", noteText, uploadedImages);
                                     setIsUploading(false);
-
                                     resetNoteModal();
                                 }}
                                 disabled={isUploading}
-                                className="cursor-pointer h-13 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black shadow-lg shadow-emerald-500/20 transition-all active:scale-[0.98] disabled:opacity-50"
+                                className="cursor-pointer h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-black shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.35)] transition-all active:scale-[0.98] disabled:opacity-50"
                             >
-                                {isUploading
-                                    ? `กำลังอัปโหลด ${images.length} รูป...`
-                                    : "บันทึก"}
+                                {isUploading ? `กำลังอัปโหลด ${images.length} รูป...` : "บันทึก"}
                             </button>
                         </div>
                     </div>

@@ -12,11 +12,14 @@ export default async function ResourcesPage() {
     });
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans px-4">
+        <div className="min-h-screen bg-[#FAFAF7] text-stone-800 font-sans px-4">
             <div className="max-w-6xl mx-auto py-8">
                 <header className="mb-8">
-                    <h1 className="text-4xl font-black mb-2 tracking-tight">คลังแสง</h1>
-                    <p className="text-neutral-400">รวบรวมคลิปติว ชีทสรุป และโน้ตสำคัญ แยกตามรายวิชา</p>
+                    <p className="text-[11px] font-black tracking-[0.2em] uppercase text-stone-400 mb-1">
+                        TCAS 70 · Resources
+                    </p>
+                    <h1 className="text-3xl font-black tracking-tight leading-none text-stone-800">คลังแสง</h1>
+                    <p className="text-sm text-stone-400 mt-2 font-medium">รวบรวมคลิปติว ชีทสรุป และโน้ตสำคัญ แยกตามรายวิชา</p>
                 </header>
 
                 <ResourceClient subjects={subjects} resources={resources} />

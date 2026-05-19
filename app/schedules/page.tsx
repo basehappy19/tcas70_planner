@@ -22,14 +22,17 @@ export default async function SchedulePage() {
     const totalSessions = allSchedules.length;
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans px-4">
+        <div className="min-h-screen bg-[#FAFAF7] text-stone-800 font-sans px-4">
             <div className="max-w-6xl mx-auto py-8">
 
                 {/* Header */}
                 <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                     <div>
-                        <h1 className="text-2xl font-black text-white tracking-tight">ตารางติว</h1>
-                        <p className="text-neutral-500 text-sm mt-1">ภาพรวมทั้งสัปดาห์ · {totalSessions} คาบ</p>
+                        <p className="text-[11px] font-black tracking-[0.2em] uppercase text-stone-400 mb-1">
+                            TCAS 70 · Schedule
+                        </p>
+                        <h1 className="text-3xl font-black text-stone-800 tracking-tight leading-none">ตารางติว</h1>
+                        <p className="text-sm text-stone-400 mt-2 font-medium">ภาพรวมทั้งสัปดาห์ · {totalSessions} คาบ</p>
                     </div>
                     <CurrentDateTime days={days} />
                 </div>
@@ -45,8 +48,8 @@ export default async function SchedulePage() {
                                     {/* Day header */}
                                     <div className={`text-center py-2.5 rounded-xl text-xs font-bold tracking-wide transition-colors ${
                                         isToday
-                                            ? "bg-emerald-500/12 text-emerald-400 border border-emerald-500/25"
-                                            : "text-neutral-600 border border-transparent"
+                                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                            : "text-stone-400 border border-transparent"
                                     }`}>
                                         {day.name}
                                     </div>
@@ -57,8 +60,8 @@ export default async function SchedulePage() {
                                                 <ScheduleGrid key={item.id} item={item} isToday={isToday} />
                                             ))
                                         ) : (
-                                            <div className="border border-dashed border-neutral-800/60 rounded-xl py-8 text-center">
-                                                <p className="text-[10px] text-neutral-700">—</p>
+                                            <div className="border border-dashed border-stone-200 rounded-xl py-8 text-center">
+                                                <p className="text-[10px] text-stone-300">—</p>
                                             </div>
                                         )}
                                     </div>
@@ -78,21 +81,23 @@ export default async function SchedulePage() {
                             <div key={day.dayIndex}>
                                 {/* Day label row */}
                                 <div className="flex items-center gap-3 mb-3">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shrink-0 ${
-                                        isToday ? "bg-emerald-500 text-black" : "bg-neutral-800 text-neutral-400"
+                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black shrink-0 ${
+                                        isToday
+                                            ? "bg-emerald-500 text-white"
+                                            : "bg-stone-100 text-stone-400"
                                     }`}>
                                         {day.short}
                                     </div>
-                                    <span className={`text-sm font-bold ${isToday ? "text-white" : "text-neutral-400"}`}>
+                                    <span className={`text-sm font-bold ${isToday ? "text-stone-800" : "text-stone-400"}`}>
                                         {day.name}
                                     </span>
                                     {isToday && (
-                                        <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-semibold">
+                                        <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
                                             วันนี้
                                         </span>
                                     )}
-                                    <div className="flex-1 h-px bg-neutral-800/60" />
-                                    <span className="text-[10px] text-neutral-600">{daySchedules.length} คาบ</span>
+                                    <div className="flex-1 h-px bg-stone-200" />
+                                    <span className="text-[10px] text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full font-medium">{daySchedules.length} คาบ</span>
                                 </div>
                                 {daySchedules.length > 0 ? (
                                     <div className="space-y-2 pl-11">
@@ -102,8 +107,8 @@ export default async function SchedulePage() {
                                     </div>
                                 ) : (
                                     <div className="pl-11">
-                                        <div className="border border-dashed border-neutral-800/50 rounded-xl py-5 text-center">
-                                            <p className="text-xs text-neutral-700">ไม่มีตาราง</p>
+                                        <div className="border border-dashed border-stone-200 rounded-xl py-5 text-center">
+                                            <p className="text-xs text-stone-300">ไม่มีตาราง</p>
                                         </div>
                                     </div>
                                 )}

@@ -58,11 +58,16 @@ export default async function MockTestPage() {
     const activeTest = await getActiveTestState();
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white font-sans px-4">
+        <div className="min-h-screen bg-[#FAFAF7] text-stone-800 font-sans px-4">
             <div className="max-w-6xl mx-auto py-8">
                 <div className="mb-8">
-                    <h1 className="text-2xl font-black text-white tracking-tight">ระบบจำลองสอบ</h1>
-                    <p className="text-neutral-500 text-sm mt-1">จับเวลา · บันทึกคะแนน · วิเคราะห์ผล</p>
+                    <p className="text-[11px] font-black tracking-[0.2em] uppercase text-stone-400 mb-1">
+                        TCAS 70 · Mock Test
+                    </p>
+                    <h1 className="text-3xl font-black text-stone-800 tracking-tight leading-none">
+                        ระบบจำลองสอบ
+                    </h1>
+                    <p className="text-sm text-stone-400 mt-2 font-medium">จับเวลา · บันทึกคะแนน · วิเคราะห์ผล</p>
                 </div>
                 <MockTestClient subjects={subjects} history={history} stats={stats} initialActiveTest={activeTest} />
             </div>
