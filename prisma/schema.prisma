@@ -78,6 +78,9 @@ model MockTest {
 
   score Float?
 
+  timeLimitMinutes Int      
+  timeSpentSeconds Int @default(0) 
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
