@@ -1,3 +1,6 @@
+// เพิ่มบรรทัดนี้เพื่อไม่ให้ Next.js จำค่า Cache ของวันที่ Deploy
+export const dynamic = "force-dynamic";
+
 import prisma from "@/lib/prisma";
 import ScheduleGrid from "../components/ScheduleGrid";
 import CurrentDateTime from "./CurrentDateTime";
@@ -8,17 +11,26 @@ export default async function SchedulePage() {
     });
 
     const days = [
-        { name: "จันทร์",    short: "จ",  dayIndex: 1 },
-        { name: "อังคาร",    short: "อ",  dayIndex: 2 },
-        { name: "พุธ",       short: "พ",  dayIndex: 3 },
-        { name: "พฤหัสบดี",  short: "พฤ", dayIndex: 4 },
-        { name: "ศุกร์",     short: "ศ",  dayIndex: 5 },
-        { name: "เสาร์",     short: "ส",  dayIndex: 6 },
-        { name: "อาทิตย์",  short: "อา", dayIndex: 0 },
+        { name: "จันทร์", short: "จ", dayIndex: 1 },
+        { name: "อังคาร", short: "อ", dayIndex: 2 },
+        { name: "พุธ", short: "พ", dayIndex: 3 },
+        { name: "พฤหัสบดี", short: "พฤ", dayIndex: 4 },
+        { name: "ศุกร์", short: "ศ", dayIndex: 5 },
+        { name: "เสาร์", short: "ส", dayIndex: 6 },
+        { name: "อาทิตย์", short: "อา", dayIndex: 0 },
     ];
 
-    const bkkTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
-    const currentDayIndex = bkkTime.getDay();
+    const bkkDayString = new Date().toLocaleDateString("en-US", {
+        timeZone: "Asia/Bangkok",
+        weekday: "short",
+    });
+
+    const dayMap: Record<string, number> = {
+        Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6
+    };
+
+    const currentDayIndex = dayMap[bkkDayString];
+
     const totalSessions = allSchedules.length;
 
     return (
@@ -46,11 +58,10 @@ export default async function SchedulePage() {
                             return (
                                 <div key={day.dayIndex} className="flex flex-col gap-2">
                                     {/* Day header */}
-                                    <div className={`text-center py-2.5 rounded-xl text-xs font-bold tracking-wide transition-colors ${
-                                        isToday
+                                    <div className={`text-center py-2.5 rounded-xl text-xs font-bold tracking-wide transition-colors ${isToday
                                             ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                             : "text-stone-400 border border-transparent"
-                                    }`}>
+                                        }`}>
                                         {day.name}
                                     </div>
                                     {/* Cards */}
@@ -81,11 +92,10 @@ export default async function SchedulePage() {
                             <div key={day.dayIndex}>
                                 {/* Day label row */}
                                 <div className="flex items-center gap-3 mb-3">
-                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black shrink-0 ${
-                                        isToday
+                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black shrink-0 ${isToday
                                             ? "bg-emerald-500 text-white"
                                             : "bg-stone-100 text-stone-400"
-                                    }`}>
+                                        }`}>
                                         {day.short}
                                     </div>
                                     <span className={`text-sm font-bold ${isToday ? "text-stone-800" : "text-stone-400"}`}>
