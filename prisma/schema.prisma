@@ -148,3 +148,46 @@ enum ResourceType {
   LINK
   NOTE
 }
+
+model FreeStudyLog {
+  id          Int      @id @default(autoincrement())
+  title       String                      
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  status      FreeStudyStatus @default(IN_PROGRESS)
+  actionLogs  FreeStudyActionLog[]
+  createdAt   DateTime @default(now())
+}
+
+enum FreeStudyStatus {
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+}
+
+enum FreeStudyActionType {
+  START
+  PAUSE
+  RESUME
+  TAKE_NOTE
+  END_SESSION
+}
+
+model FreeStudyActionLog {
+  id             Int      @id @default(autoincrement())
+  freeStudyLogId Int
+  freeStudyLog   FreeStudyLog @relation(fields: [freeStudyLogId], references: [id])
+  time           DateTime @default(now())
+  action         FreeStudyActionType
+  note           String?
+  images         FreeStudyNoteImage[]
+}
+
+model FreeStudyNoteImage {
+  id          Int      @id @default(autoincrement())
+  url         String
+  caption     String?
+  createdAt   DateTime @default(now())
+  actionLogId Int
+  actionLog   FreeStudyActionLog @relation(fields: [actionLogId], references: [id], onDelete: Cascade)
+}

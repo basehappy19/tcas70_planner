@@ -14,6 +14,8 @@ dayjs.extend(isBetween);
 dayjs.extend(buddhistEra);
 dayjs.locale("th");
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type ScheduleItem = {
     id: number;
     title: string;
@@ -38,6 +40,23 @@ type StudyLogWithActions = {
     }[];
 };
 
+type FreeStudyLogEntry = {
+    id: number;
+    title: string;
+    startedAt: Date;
+    endedAt: Date | null;
+    status: string;
+    actionLogs: {
+        id: number;
+        time: Date;
+        action: string;
+        note: string | null;
+        images?: { id: number; url: string; caption?: string | null }[];
+    }[];
+};
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const TYPE_COLORS: Record<string, { dot: string; bg: string; text: string; border: string }> = {
     CONTENT:   { dot: "bg-blue-400",    bg: "bg-blue-50",    text: "text-blue-600",    border: "border-blue-200" },
     FREE_TIME: { dot: "bg-emerald-400", bg: "bg-emerald-50", text: "text-emerald-600", border: "border-emerald-200" },
@@ -51,6 +70,7 @@ const ACTION_LABELS: Record<string, string> = {
     RESUME:        "เรียนต่อ",
     TAKE_NOTE:     "จดโน้ต",
     END_SESSION:   "จบการเรียน",
+    START:         "เริ่มเรียน",
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -60,7 +80,96 @@ const ACTION_COLORS: Record<string, string> = {
     RESUME:        "text-blue-600 bg-blue-50 border-blue-200",
     TAKE_NOTE:     "text-violet-600 bg-violet-50 border-violet-200",
     END_SESSION:   "text-rose-600 bg-rose-50 border-rose-200",
+    START:         "text-emerald-600 bg-emerald-50 border-emerald-200",
 };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDuration(startedAt: Date, endedAt: Date | null) {
+    if (!endedAt) return null;
+    const diffSec = dayjs(endedAt).diff(dayjs(startedAt), "second");
+    const h = Math.floor(diffSec / 3600);
+    const m = Math.floor((diffSec % 3600) / 60);
+    if (h > 0) return `${h} ชม. ${m} น.`;
+    return `${m} น.`;
+}
+
+function getGoogleDriveImageUrl(url: string) {
+    const match = url.match(/\/d\/(.*?)\//);
+    if (!match) return url;
+    return `https://drive.google.com/uc?export=view&id=${match[1]}`;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function ActionLogList({
+    actionLogs,
+    onImageClick,
+}: {
+    actionLogs: StudyLogWithActions["actionLogs"] | FreeStudyLogEntry["actionLogs"];
+    onImageClick: (url: string, caption?: string | null) => void;
+}) {
+    if (actionLogs.length === 0) {
+        return (
+            <div className="rounded-xl border border-dashed border-stone-200 py-8 text-center">
+                <p className="text-sm text-stone-400 italic">ไม่มีบันทึกกิจกรรม</p>
+            </div>
+        );
+    }
+    return (
+        <ul className="space-y-4">
+            {actionLogs.map(al => (
+                <li key={al.id} className="flex gap-4">
+                    <div className="w-14 shrink-0">
+                        <span className="text-[11px] font-mono text-stone-400">
+                            {dayjs(al.time).format("h:mm A")}
+                        </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className={`inline-flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-lg border ${ACTION_COLORS[al.action] ?? "text-stone-600 bg-stone-50 border-stone-200"}`}>
+                            {ACTION_LABELS[al.action] ?? al.action}
+                        </div>
+                        {al.note && (
+                            <div className="mt-2 rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+                                <p className="text-sm text-stone-600 leading-relaxed whitespace-pre-wrap wrap-break-word">
+                                    {al.note}
+                                </p>
+                            </div>
+                        )}
+                        {al.images && al.images.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                                {al.images.map(img => {
+                                    const imageUrl = getGoogleDriveImageUrl(img.url);
+                                    return (
+                                        <button
+                                            key={img.id}
+                                            onClick={() => onImageClick(imageUrl, img.caption)}
+                                            className="cursor-pointer group relative block w-20 h-20 rounded-xl overflow-hidden border border-stone-200 hover:border-stone-300 transition-all"
+                                        >
+                                            <Image
+                                                width={80} height={80}
+                                                src={imageUrl}
+                                                alt={img.caption || "Note image"}
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                            />
+                                            {img.caption && (
+                                                <div className="absolute bottom-0 inset-x-0 bg-black/50 backdrop-blur-sm text-[10px] text-white px-2 py-1 truncate">
+                                                    {img.caption}
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; isToday?: boolean }) {
     const [isEditing, setIsEditing] = useState(false);
@@ -71,18 +180,17 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
     const [imageVisible, setImageVisible] = useState(false);
     const [isCurrentTimeSlot, setIsCurrentTimeSlot] = useState(false);
     const [historyData, setHistoryData] = useState<StudyLogWithActions[]>([]);
+    const [freeStudyByDate, setFreeStudyByDate] = useState<Record<string, FreeStudyLogEntry[]>>({});
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [formData, setFormData] = useState({ title: item.title, startTime: item.startTime, endTime: item.endTime });
     const [errors, setErrors] = useState({ title: false, startTime: false, endTime: false });
 
     const fmt = (t: string) => t ? dayjs(t, "HH:mm").format("h:mm A") : "";
-
     const validateForm = () => {
         const newErrors = { title: !formData.title.trim(), startTime: !formData.startTime, endTime: !formData.endTime };
         setErrors(newErrors);
         return !Object.values(newErrors).some(Boolean);
     };
-
     const isFormValid = formData.title.trim() && formData.startTime && formData.endTime;
 
     useEffect(() => {
@@ -115,8 +223,21 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
         setShowHistory(true);
         requestAnimationFrame(() => setHistoryVisible(true));
         setLoadingHistory(true);
+
+        // ดึงทั้ง scheduled history และ free study ของวันที่มี session
         const res = await getScheduleHistory(item.id);
-        if (res.success && res.data) setHistoryData(res.data);
+        if (res.success && res.data) {
+            setHistoryData(res.data.scheduledLogs ?? res.data);
+
+            // group free study logs by date string (YYYY-MM-DD)
+            const freeMap: Record<string, FreeStudyLogEntry[]> = {};
+            for (const fl of (res.data.freeStudyLogs ?? [])) {
+                const dateKey = dayjs(fl.startedAt).format("YYYY-MM-DD");
+                if (!freeMap[dateKey]) freeMap[dateKey] = [];
+                freeMap[dateKey].push(fl);
+            }
+            setFreeStudyByDate(freeMap);
+        }
         setLoadingHistory(false);
     };
     const closeHistoryModal = () => { setHistoryVisible(false); setTimeout(() => setShowHistory(false), 250); };
@@ -126,12 +247,6 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
         requestAnimationFrame(() => setImageVisible(true));
     };
     const closeImageModal = () => { setImageVisible(false); setTimeout(() => setSelectedImage(null), 250); };
-
-    const getGoogleDriveImageUrl = (url: string) => {
-        const match = url.match(/\/d\/(.*?)\//);
-        if (!match) return url;
-        return `https://drive.google.com/uc?export=view&id=${match[1]}`;
-    };
 
     const typeColor = TYPE_COLORS[item.type?.toUpperCase() ?? ""] ?? {
         dot: "bg-stone-400", bg: "bg-stone-50", text: "text-stone-500", border: "border-stone-200"
@@ -155,16 +270,13 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                         ตอนนี้
                     </span>
                 )}
-
                 <p className="text-[10px] text-stone-400 font-mono mb-1.5 tabular-nums">
                     {fmt(item.startTime)} – {fmt(item.endTime)}
                 </p>
-
                 <div className="flex items-start gap-1.5 mb-3">
                     <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${typeColor.dot}`} />
                     <p className="text-sm font-bold text-stone-700 leading-snug line-clamp-2">{item.title}</p>
                 </div>
-
                 <div className="flex gap-1.5">
                     <button
                         onClick={openHistoryModal}
@@ -198,7 +310,6 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                             historyVisible ? "scale-100 translate-y-0 opacity-100" : "scale-95 translate-y-6 opacity-0"
                         }`}
                     >
-                        {/* Accent strip */}
                         <div className="h-1.5 w-full bg-linear-to-r from-emerald-400 to-teal-300 shrink-0" />
 
                         {/* Header */}
@@ -215,9 +326,7 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                                 <button
                                     onClick={closeHistoryModal}
                                     className="cursor-pointer shrink-0 w-9 h-9 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center text-sm font-bold"
-                                >
-                                    ✕
-                                </button>
+                                >✕</button>
                             </div>
                         </div>
 
@@ -227,90 +336,93 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                                 <div className="flex items-center justify-center py-16">
                                     <div className="w-6 h-6 rounded-full border-2 border-stone-200 border-t-emerald-500 animate-spin" />
                                 </div>
-                            ) : historyData.length > 0 ? historyData.map(log => (
-                                <div key={log.id} className="rounded-2xl border border-stone-100 bg-stone-50/60 overflow-hidden">
-                                    {/* Card header */}
-                                    <div className="px-5 py-4 border-b border-stone-100 bg-white">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p className="text-sm font-bold text-stone-800">
-                                                    {dayjs(log.date).format("D MMMM BBBB")}
-                                                </p>
-                                                <p className="text-[11px] text-stone-400 mt-1 font-mono">
-                                                    เริ่ม {log.actualStartAt ? dayjs(log.actualStartAt).format("h:mm A") : "—"}
-                                                    {log.delayMinutes > 0 && (
-                                                        <span className="text-rose-500 ml-2 font-semibold">+{log.delayMinutes} นาที</span>
-                                                    )}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {/* Card body */}
-                                    <div className="p-5">
-                                        {log.actionLogs?.length > 0 ? (
-                                            <ul className="space-y-4">
-                                                {log.actionLogs.map(al => (
-                                                    <li key={al.id} className="flex gap-4">
-                                                        <div className="w-14 shrink-0">
-                                                            <span className="text-[11px] font-mono text-stone-400">
-                                                                {dayjs(al.time).format("h:mm A")}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className={`inline-flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-lg border ${ACTION_COLORS[al.action] ?? "text-stone-600 bg-stone-50 border-stone-200"}`}>
-                                                                {ACTION_LABELS[al.action] ?? al.action}
-                                                            </div>
-                                                            {al.note && (
-                                                                <div className="mt-2 rounded-xl border border-stone-200 bg-white px-3 py-2.5">
-                                                                    <p className="text-sm text-stone-600 leading-relaxed whitespace-pre-wrap wrap-break-word">
-                                                                        {al.note}
-                                                                    </p>
-                                                                </div>
-                                                            )}
-                                                            {al.images && al.images.length > 0 && (
-                                                                <div className="flex flex-wrap gap-2 mt-3">
-                                                                    {al.images.map(img => {
-                                                                        const imageUrl = getGoogleDriveImageUrl(img.url);
-                                                                        return (
-                                                                            <button
-                                                                                key={img.id}
-                                                                                onClick={() => openImageModal(imageUrl, img.caption)}
-                                                                                className="cursor-pointer group relative block w-20 h-20 rounded-xl overflow-hidden border border-stone-200 hover:border-stone-300 transition-all"
-                                                                            >
-                                                                                <Image
-                                                                                    width={80} height={80}
-                                                                                    src={imageUrl}
-                                                                                    alt={img.caption || "Note image"}
-                                                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                                                                />
-                                                                                {img.caption && (
-                                                                                    <div className="absolute bottom-0 inset-x-0 bg-black/50 backdrop-blur-sm text-[10px] text-white px-2 py-1 truncate">
-                                                                                        {img.caption}
-                                                                                    </div>
-                                                                                )}
-                                                                            </button>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        ) : (
-                                            <div className="rounded-xl border border-dashed border-stone-200 py-8 text-center">
-                                                <p className="text-sm text-stone-400 italic">ไม่มีบันทึกกิจกรรม</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )) : (
+                            ) : historyData.length === 0 && Object.keys(freeStudyByDate).length === 0 ? (
                                 <div className="py-20 text-center">
                                     <div className="text-4xl mb-4">📚</div>
                                     <p className="text-base font-bold text-stone-400">ยังไม่มีประวัติ</p>
                                     <p className="text-sm text-stone-300 mt-2">เริ่มเรียนแล้วประวัติจะปรากฏที่นี่</p>
                                 </div>
-                            )}
+                            ) : historyData.map(log => {
+                                const dateKey = dayjs(log.date).format("YYYY-MM-DD");
+                                const freeLogs = freeStudyByDate[dateKey] ?? [];
+                                return (
+                                    <div key={log.id} className="rounded-2xl border border-stone-100 bg-stone-50/60 overflow-hidden">
+                                        {/* Date header */}
+                                        <div className="px-5 py-4 border-b border-stone-100 bg-white">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-bold text-stone-800">
+                                                        {dayjs(log.date).format("D MMMM BBBB")}
+                                                    </p>
+                                                    <p className="text-[11px] text-stone-400 mt-1 font-mono">
+                                                        เริ่ม {log.actualStartAt ? dayjs(log.actualStartAt).format("h:mm A") : "—"}
+                                                        {log.delayMinutes > 0 && (
+                                                            <span className="text-rose-500 ml-2 font-semibold">+{log.delayMinutes} นาที</span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                {freeLogs.length > 0 && (
+                                                    <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-50 text-violet-600 border border-violet-200 shrink-0">
+                                                        +{freeLogs.length} นอกตาราง
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Scheduled session logs */}
+                                        <div className="p-5">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">
+                                                📅 เรียนในตาราง
+                                            </p>
+                                            <ActionLogList
+                                                actionLogs={log.actionLogs}
+                                                onImageClick={openImageModal}
+                                            />
+                                        </div>
+
+                                        {/* Free study sessions on the same day */}
+                                        {freeLogs.length > 0 && (
+                                            <div className="px-5 pb-5 space-y-4">
+                                                <div className="h-px bg-stone-100" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-violet-500">
+                                                    🟣 เรียนนอกตาราง
+                                                </p>
+                                                {freeLogs.map(fl => {
+                                                    const duration = formatDuration(fl.startedAt, fl.endedAt);
+                                                    return (
+                                                        <div key={fl.id} className="rounded-2xl border border-violet-100 bg-violet-50/40 overflow-hidden">
+                                                            {/* Free session header */}
+                                                            <div className="px-4 py-3 border-b border-violet-100 bg-white/70">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <div>
+                                                                        <p className="text-sm font-bold text-stone-800">{fl.title}</p>
+                                                                        <p className="text-[11px] font-mono text-stone-400 mt-0.5">
+                                                                            {dayjs(fl.startedAt).format("h:mm A")}
+                                                                            {fl.endedAt && ` – ${dayjs(fl.endedAt).format("h:mm A")}`}
+                                                                        </p>
+                                                                    </div>
+                                                                    {duration && (
+                                                                        <span className="shrink-0 text-xs font-bold px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 border border-violet-200">
+                                                                            ⏱ {duration}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            {/* Free session action logs */}
+                                                            <div className="p-4">
+                                                                <ActionLogList
+                                                                    actionLogs={fl.actionLogs}
+                                                                    onImageClick={openImageModal}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
 
                         {/* Footer */}
@@ -340,10 +452,7 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                             editVisible ? "scale-100 translate-y-0 opacity-100" : "scale-95 translate-y-6 opacity-0"
                         }`}
                     >
-                        {/* Accent strip */}
                         <div className="h-1.5 w-full bg-linear-to-r from-stone-300 to-stone-200" />
-
-                        {/* Header */}
                         <div className="px-6 py-5 border-b border-stone-100">
                             <div className="flex items-start justify-between gap-4">
                                 <div>
@@ -361,32 +470,20 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                                 <button
                                     onClick={closeEditModal}
                                     className="cursor-pointer shrink-0 w-9 h-9 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center text-sm font-bold"
-                                >
-                                    ✕
-                                </button>
+                                >✕</button>
                             </div>
                         </div>
-
-                        {/* Body */}
                         <div className="px-6 py-6 space-y-5">
                             <div>
                                 <label className="text-[10px] font-black uppercase tracking-widest text-stone-400 block mb-1.5">ชื่อวิชา</label>
                                 <input
                                     type="text"
                                     value={formData.title}
-                                    onChange={e => {
-                                        setFormData({ ...formData, title: e.target.value });
-                                        if (e.target.value.trim()) setErrors({ ...errors, title: false });
-                                    }}
-                                    className={`w-full bg-stone-50 text-stone-800 text-sm border rounded-2xl px-4 py-3 outline-none transition-all placeholder:text-stone-300 ${
-                                        errors.title
-                                            ? "border-rose-300 bg-rose-50/50 focus:border-rose-400"
-                                            : "border-stone-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
-                                    }`}
+                                    onChange={e => { setFormData({ ...formData, title: e.target.value }); if (e.target.value.trim()) setErrors({ ...errors, title: false }); }}
+                                    className={`w-full bg-stone-50 text-stone-800 text-sm border rounded-2xl px-4 py-3 outline-none transition-all placeholder:text-stone-300 ${errors.title ? "border-rose-300 bg-rose-50/50 focus:border-rose-400" : "border-stone-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"}`}
                                 />
                                 {errors.title && <p className="text-rose-500 text-xs mt-1.5 font-medium">กรุณากรอกชื่อวิชา</p>}
                             </div>
-
                             <div className="grid grid-cols-2 gap-4">
                                 {[
                                     { label: "เริ่ม", key: "startTime", error: errors.startTime, errMsg: "กรุณาเลือกเวลาเริ่ม" },
@@ -397,38 +494,22 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                                         <input
                                             type="time"
                                             value={formData[key as keyof typeof formData]}
-                                            onChange={e => {
-                                                setFormData({ ...formData, [key]: e.target.value });
-                                                if (e.target.value) setErrors({ ...errors, [key]: false });
-                                            }}
-                                            className={`cursor-pointer w-full bg-stone-50 text-stone-800 text-sm border rounded-2xl px-4 py-3 outline-none transition-all ${
-                                                error
-                                                    ? "border-rose-300 bg-rose-50/50"
-                                                    : "border-stone-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
-                                            }`}
+                                            onChange={e => { setFormData({ ...formData, [key]: e.target.value }); if (e.target.value) setErrors({ ...errors, [key]: false }); }}
+                                            className={`cursor-pointer w-full bg-stone-50 text-stone-800 text-sm border rounded-2xl px-4 py-3 outline-none transition-all ${error ? "border-rose-300 bg-rose-50/50" : "border-stone-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"}`}
                                         />
                                         {error && <p className="text-rose-500 text-xs mt-1.5 font-medium">{errMsg}</p>}
                                     </div>
                                 ))}
                             </div>
                         </div>
-
-                        {/* Footer */}
                         <div className="border-t border-stone-100 px-6 py-5 grid grid-cols-2 gap-3">
-                            <button
-                                onClick={closeEditModal}
-                                className="cursor-pointer py-3 rounded-2xl text-sm font-bold text-stone-500 border border-stone-200 bg-stone-50 hover:bg-stone-100 transition-all"
-                            >
+                            <button onClick={closeEditModal} className="cursor-pointer py-3 rounded-2xl text-sm font-bold text-stone-500 border border-stone-200 bg-stone-50 hover:bg-stone-100 transition-all">
                                 ยกเลิก
                             </button>
                             <button
                                 onClick={handleUpdate}
                                 disabled={!isFormValid}
-                                className={`py-3 rounded-2xl text-sm font-black transition-all ${
-                                    isFormValid
-                                        ? "cursor-pointer bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_4px_16px_rgba(5,150,105,0.25)]"
-                                        : "cursor-not-allowed bg-stone-100 text-stone-300"
-                                }`}
+                                className={`py-3 rounded-2xl text-sm font-black transition-all ${isFormValid ? "cursor-pointer bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_4px_16px_rgba(5,150,105,0.25)]" : "cursor-not-allowed bg-stone-100 text-stone-300"}`}
                             >
                                 บันทึก
                             </button>
@@ -454,10 +535,7 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                         <button
                             onClick={closeImageModal}
                             className="cursor-pointer absolute -top-12 right-0 w-9 h-9 rounded-xl bg-white/20 hover:bg-white/30 text-white transition-colors flex items-center justify-center font-bold"
-                        >
-                            ✕
-                        </button>
-
+                        >✕</button>
                         <div className="relative w-full flex justify-center">
                             <Image
                                 src={selectedImage.url}
@@ -466,7 +544,6 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                                 className="max-h-[72vh] w-auto max-w-full object-contain rounded-2xl border border-white/20 shadow-2xl"
                             />
                         </div>
-
                         <div className="w-full max-w-3xl mt-4 bg-white/90 backdrop-blur-md border border-stone-200 rounded-2xl p-4 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between shadow-lg">
                             <p className="text-sm text-stone-700 wrap-break-word leading-relaxed flex-1 min-w-0">
                                 {selectedImage.caption || "ไม่มีคำอธิบาย"}
