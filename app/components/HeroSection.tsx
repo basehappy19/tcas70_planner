@@ -1,10 +1,11 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 import isBetween from "dayjs/plugin/isBetween";
-import { addActionLogToDB, createStudySession, finishStudySession, getCurrentSessionState } from "@/app/actions/study";
+import { addActionLogToDB, createStudySession, finishStudySession } from "@/app/actions/study";
 import { uploadImageToDrive } from "@/app/actions/drive";
 import buddhistEra from 'dayjs/plugin/buddhistEra';
 import 'dayjs/locale/th';
@@ -23,6 +24,8 @@ type Schedule = {
     type: string;
     dayOfWeek: number;
 };
+
+type ScheduleWithTarget = Schedule & { _targetDate?: dayjs.Dayjs };
 
 type Props = {
     allSchedules: Schedule[];
@@ -108,6 +111,7 @@ function CountdownRing({
                 fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
                 strokeDasharray={`${dash} ${circ}`}
                 style={{ transition: "stroke-dasharray 0.8s linear" }}
+                suppressHydrationWarning
             />
         </svg>
     );
@@ -122,6 +126,8 @@ export default function HeroSection({
     initialCanEnd,
     initialStatus,
 }: Props) {
+    const router = useRouter();
+
     const [currentTime, setCurrentTime] = useState(initialTime);
     const [nowDow, setNowDow] = useState<number>(initialDow);
     const [nowMinutes, setNowMinutes] = useState(initialMinutes);
@@ -166,17 +172,19 @@ export default function HeroSection({
         return null;
     }, [allSchedules]);
 
-    const getNextSchedule = useCallback((dow: number, mins: number) => {
+    // ── แก้ไข: ใช้ _targetDate แทน _offsetDays ──
+    const getNextSchedule = useCallback((dow: number, mins: number): ScheduleWithTarget | null => {
         const todayNext = allSchedules
             .filter(s => s.dayOfWeek === dow && timeToMinutes(s.startTime) > mins)
             .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))[0];
-        if (todayNext) return todayNext;
+        if (todayNext) return { ...todayNext, _targetDate: dayjs() };
+
         for (let i = 1; i <= 7; i++) {
             const d = (dow + i) % 7;
             const first = allSchedules
                 .filter(s => s.dayOfWeek === d)
                 .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))[0];
-            if (first) return { ...first, _offsetDays: i };
+            if (first) return { ...first, _targetDate: dayjs().add(i, "day") };
         }
         return null;
     }, [allSchedules]);
@@ -185,13 +193,7 @@ export default function HeroSection({
         allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null
     );
 
-    useEffect(() => {
-        const interval = setInterval(async () => {
-            const serverStatus = await getCurrentSessionState();
-            setStatus(cur => serverStatus !== cur ? serverStatus : cur);
-        }, 3000);
-        return () => clearInterval(interval);
-    }, []);
+    // ── ลบ polling 3 วินาทีออก: ใช้ router.refresh() หลัง action แทน ──
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -224,16 +226,15 @@ export default function HeroSection({
         return () => clearInterval(timer);
     }, [getCurrentSchedule, status]);
 
+    // ── แก้ไข: คำนวณ countdown จาก _targetDate ──
     const getTimeUntilNextSchedule = () => {
-        if (!nextSchedule) return null;
-        const now = dayjs();
-        let target = dayjs()
-            .day(nextSchedule.dayOfWeek)
+        if (!nextSchedule?._targetDate) return null;
+        const target = (nextSchedule._targetDate as dayjs.Dayjs)
             .hour(Number(nextSchedule.startTime.split(":")[0]))
             .minute(Number(nextSchedule.startTime.split(":")[1]))
-            .second(0);
-        if (nextSchedule._offsetDays) target = target.add(nextSchedule._offsetDays, "day");
-        const diffSeconds = target.diff(now, "second");
+            .second(0)
+            .millisecond(0);
+        const diffSeconds = target.diff(dayjs(), "second");
         if (diffSeconds <= 0) return "กำลังจะเริ่ม";
         const hours = Math.floor(diffSeconds / 3600);
         const minutes = Math.floor((diffSeconds % 3600) / 60);
@@ -243,8 +244,19 @@ export default function HeroSection({
         return `อีก ${seconds} วิ`;
     };
 
+    // ── แก้ไข: label วันถัดไปจาก _targetDate ──
+    const getNextDayLabel = (schedule: ScheduleWithTarget): string => {
+        if (!schedule._targetDate) return DAY_NAMES_TH[schedule.dayOfWeek] + " ";
+        const diffDays = (schedule._targetDate as dayjs.Dayjs)
+            .startOf("day")
+            .diff(dayjs().startOf("day"), "day");
+        if (diffDays === 0) return "";
+        if (diffDays === 1) return "พรุ่งนี้ ";
+        return DAY_FULL_TH[schedule.dayOfWeek] + " ";
+    };
+
     const prevSchedule = getPrevSchedule(nowDow, nowMinutes);
-    const nextSchedule = getNextSchedule(nowDow, nowMinutes) as (Schedule & { _offsetDays?: number }) | null;
+    const nextSchedule = getNextSchedule(nowDow, nowMinutes);
     const nextScheduleCountdown = getTimeUntilNextSchedule();
     const daySchedules = allSchedules
         .filter(s => s.dayOfWeek === selectedDay)
@@ -253,7 +265,10 @@ export default function HeroSection({
     const handleStartStudy = async () => {
         if (!currentSchedule?.id) return;
         const res = await createStudySession({ scheduleId: currentSchedule.id });
-        if (res.success) setStatus("STUDYING");
+        if (res.success) {
+            setStatus("STUDYING");
+            router.refresh();
+        }
     };
 
     const handleEndSession = async () => {
@@ -272,6 +287,7 @@ export default function HeroSection({
             setCurrentSchedule(getCurrentSchedule(dow, mins));
             setNowDow(dow);
             setNowMinutes(mins);
+            router.refresh();
         }
     };
 
@@ -487,8 +503,8 @@ export default function HeroSection({
                 {/* Prev / Next strip */}
                 <div className="grid grid-cols-2 gap-3">
                     {[
-                        { label: "◂ ก่อนหน้า", schedule: prevSchedule, isNext: false },
-                        { label: "ถัดไป ▸",    schedule: nextSchedule,  isNext: true  },
+                        { label: "◂ ก่อนหน้า", schedule: prevSchedule as ScheduleWithTarget | null, isNext: false },
+                        { label: "ถัดไป ▸",    schedule: nextSchedule,                               isNext: true  },
                     ].map(({ label, schedule, isNext }) => (
                         <div key={label} className="rounded-2xl bg-white border border-stone-100 shadow-[0_1px_12px_rgba(0,0,0,0.05)] p-4">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">{label}</p>
@@ -496,9 +512,10 @@ export default function HeroSection({
                                 <>
                                     <p className="text-sm font-bold text-stone-700 leading-tight">{schedule.title}</p>
                                     <p className="text-xs text-stone-400 mt-1 font-mono">
-                                        {isNext && (schedule as Schedule & { _offsetDays?: number })._offsetDays
-                                            ? `${todayLabel((nowDow + ((schedule as Schedule & { _offsetDays?: number })._offsetDays ?? 0)) % 7)} `
-                                            : !isNext ? `${DAY_NAMES_TH[schedule.dayOfWeek]} ` : ""}
+                                        {/* ── แก้ไข: ใช้ getNextDayLabel แทนการคำนวณ _offsetDays ── */}
+                                        {isNext
+                                            ? getNextDayLabel(schedule as ScheduleWithTarget)
+                                            : `${DAY_NAMES_TH[schedule.dayOfWeek]} `}
                                         {formatTo12Hour(schedule.startTime)}–{formatTo12Hour(schedule.endTime)}
                                     </p>
                                     {isNext && nextScheduleCountdown && (
@@ -611,7 +628,6 @@ export default function HeroSection({
                                 <p className="text-[11px] text-stone-300 mt-1.5 text-right font-mono">{noteText.length}/1000</p>
                             </div>
                             <div>
-                                {/* รองรับ PNG, JPG, GIF, WebP ทั้งหมด */}
                                 <input
                                     type="file"
                                     accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
@@ -638,7 +654,6 @@ export default function HeroSection({
                                     {images.map((img, index) => (
                                         <div key={index} className="flex gap-3.5 rounded-2xl border border-stone-100 bg-stone-50 p-3">
                                             <div className="relative shrink-0">
-                                                {/* ใช้ <img> แทน next/image เพราะ preview เป็น blob URL */}
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
                                                     src={img.preview}
