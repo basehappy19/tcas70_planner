@@ -47,6 +47,9 @@ const DAY_NAMES_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส
 const DAY_FULL_TH = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
+// ── เพิ่ม buffer: กี่นาทีก่อนเวลาจริงที่ให้กดเริ่มได้ ──
+const EARLY_START_MINUTES = 5;
+
 const formatTo12Hour = (time24: string) => {
     if (!time24) return "";
     return dayjs(time24, "HH:mm").format("h:mm A");
@@ -128,7 +131,9 @@ export default function HeroSection({
 }: Props) {
     const router = useRouter();
 
-    const [currentTime, setCurrentTime] = useState(initialTime);
+    // ── Fix hydration #418: ใช้ "" เป็น initial แล้ว sync จริงหลัง mount ──
+    // ถ้าใช้ initialTime ตรงๆ server และ client จะ render ต่างกัน (เวลาต่างกัน ~ms)
+    const [currentTime, setCurrentTime] = useState("");
     const [nowDow, setNowDow] = useState<number>(initialDow);
     const [nowMinutes, setNowMinutes] = useState(initialMinutes);
     const [status, setStatus] = useState<"IDLE" | "STUDYING" | "PAUSED">(initialStatus);
@@ -149,10 +154,15 @@ export default function HeroSection({
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const getCurrentSchedule = useCallback((dow: number, mins: number) => {
+    // ── getCurrentSchedule: match ได้ก่อนเวลาจริง EARLY_START_MINUTES นาที ──
+    // แต่เฉพาะเมื่อ status=IDLE (ยังไม่มีคาบที่กำลังเรียนอยู่)
+    const getCurrentSchedule = useCallback((dow: number, mins: number, earlyAllowed = false) => {
         return allSchedules.find(s =>
             s.dayOfWeek === dow &&
-            timeToMinutes(s.startTime) <= mins &&
+            (earlyAllowed
+                ? timeToMinutes(s.startTime) - EARLY_START_MINUTES <= mins
+                : timeToMinutes(s.startTime) <= mins
+            ) &&
             timeToMinutes(s.endTime) >= mins
         ) ?? null;
     }, [allSchedules]);
@@ -172,7 +182,6 @@ export default function HeroSection({
         return null;
     }, [allSchedules]);
 
-    // ── แก้ไข: ใช้ _targetDate แทน _offsetDays ──
     const getNextSchedule = useCallback((dow: number, mins: number): ScheduleWithTarget | null => {
         const todayNext = allSchedules
             .filter(s => s.dayOfWeek === dow && timeToMinutes(s.startTime) > mins)
@@ -193,10 +202,14 @@ export default function HeroSection({
         allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null
     );
 
-    // ── ลบ polling 3 วินาทีออก: ใช้ router.refresh() หลัง action แทน ──
+    // ── canStartSession: ถ้า IDLE และอยู่ใน window [-5min, endTime] ──
+    const canStartSession = currentSchedule
+        ? nowMinutes >= timeToMinutes(currentSchedule.startTime) - EARLY_START_MINUTES
+        : false;
 
+    // ── Sync real time หลัง mount (แก้ hydration) + tick ทุก 1 วินาที ──
     useEffect(() => {
-        const timer = setInterval(() => {
+        const tick = () => {
             const now = dayjs();
             setCurrentTime(now.format("h:mm:ss A"));
             const dow = now.day();
@@ -211,10 +224,12 @@ export default function HeroSection({
                     setCanEndSession(secs <= 0);
                     return current;
                 }
-                const live = getCurrentSchedule(dow, mins);
+                // IDLE: ใช้ earlyAllowed=true เพื่อให้คาบใหม่ขึ้นมาก่อน 5 นาที
+                const live = getCurrentSchedule(dow, mins, true);
                 if (live) {
                     const secs = getSecondsRemaining(live.endTime);
                     setSecondsRemaining(secs);
+                    // canEnd: จบได้เมื่อเลยเวลาจริงแล้วเท่านั้น (ไม่ใช่ช่วง early)
                     setCanEndSession(secs <= 0);
                 } else {
                     setSecondsRemaining(0);
@@ -222,11 +237,13 @@ export default function HeroSection({
                 }
                 return live;
             });
-        }, 1000);
+        };
+
+        tick();
+        const timer = setInterval(tick, 1000);
         return () => clearInterval(timer);
     }, [getCurrentSchedule, status]);
 
-    // ── แก้ไข: คำนวณ countdown จาก _targetDate ──
     const getTimeUntilNextSchedule = () => {
         if (!nextSchedule?._targetDate) return null;
         const target = (nextSchedule._targetDate as dayjs.Dayjs)
@@ -244,7 +261,6 @@ export default function HeroSection({
         return `อีก ${seconds} วิ`;
     };
 
-    // ── แก้ไข: label วันถัดไปจาก _targetDate ──
     const getNextDayLabel = (schedule: ScheduleWithTarget): string => {
         if (!schedule._targetDate) return DAY_NAMES_TH[schedule.dayOfWeek] + " ";
         const diffDays = (schedule._targetDate as dayjs.Dayjs)
@@ -280,13 +296,21 @@ export default function HeroSection({
         const res = await finishStudySession();
         setIsSaving(false);
         if (res.success || status === "IDLE") {
+            // ── Fix: reset state ทันทีบน client อย่ารอ router.refresh() ──
+            setStatus("IDLE");
+            setSecondsRemaining(0);
+            setCanEndSession(false);
+
             const now = dayjs();
             const dow = now.day();
             const mins = timeToMinutes(now.format("HH:mm"));
-            setStatus("IDLE");
-            setCurrentSchedule(getCurrentSchedule(dow, mins));
             setNowDow(dow);
             setNowMinutes(mins);
+
+            // recalculate: หลังจบคาบ ถ้าคาบถัดไปเริ่มได้แล้ว (±0s หรือ early window) ให้ขึ้นเลย
+            const nextLive = getCurrentSchedule(dow, mins, true);
+            setCurrentSchedule(nextLive);
+
             router.refresh();
         }
     };
@@ -337,6 +361,11 @@ export default function HeroSection({
         ? (timeToMinutes(currentSchedule.endTime) - timeToMinutes(currentSchedule.startTime)) * 60
         : 0;
 
+    // ── isInEarlyWindow: คาบนี้ยังไม่ถึงเวลาจริง แต่อยู่ใน early window ──
+    const isInEarlyWindow = currentSchedule
+        ? nowMinutes < timeToMinutes(currentSchedule.startTime)
+        : false;
+
     const statusConfig = {
         IDLE:     { label: "ว่าง",         dot: "bg-stone-400",   pill: "bg-stone-100 text-stone-500 border-stone-200" },
         STUDYING: { label: "กำลังเรียน",   dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200" },
@@ -352,8 +381,12 @@ export default function HeroSection({
                 <div className="flex items-start justify-between">
                     <div>
                         <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-stone-400 mb-1">TCAS 70 · Planner</p>
-                        <p className="text-3xl md:text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none" suppressHydrationWarning>
-                            {currentTime}
+                        {/* suppressHydrationWarning เพราะ currentTime เริ่มเป็น "" แล้ว set หลัง mount */}
+                        <p
+                            className="text-3xl md:text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none"
+                            suppressHydrationWarning
+                        >
+                            {currentTime || initialTime}
                         </p>
                         <p className="text-sm text-stone-400 mt-2 font-medium" suppressHydrationWarning>
                             {DAY_FULL_TH[nowDow]}ที่ {dayjs().format("D MMMM BBBB")}
@@ -371,11 +404,14 @@ export default function HeroSection({
                         <div className={`h-1.5 w-full ${
                             status === "STUDYING" ? "bg-linear-to-r from-emerald-400 to-teal-300" :
                             status === "PAUSED"   ? "bg-linear-to-r from-orange-400 to-amber-300" :
+                            isInEarlyWindow       ? "bg-linear-to-r from-amber-300 to-yellow-200" :
                                                    "bg-linear-to-r from-stone-200 to-stone-100"
                         }`} />
                         <div className="p-6">
                             <div className="flex items-start justify-between mb-1">
-                                <span className="text-[10px] font-black tracking-[0.18em] uppercase text-emerald-600">ชั่วโมงนี้</span>
+                                <span className={`text-[10px] font-black tracking-[0.18em] uppercase ${isInEarlyWindow ? "text-amber-500" : "text-emerald-600"}`}>
+                                    {isInEarlyWindow ? "เตรียมตัว" : "ชั่วโมงนี้"}
+                                </span>
                                 <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${getTypeColor(currentSchedule.type).bg} ${getTypeColor(currentSchedule.type).text} ${getTypeColor(currentSchedule.type).border}`}>
                                     {currentSchedule.type}
                                 </span>
@@ -389,6 +425,12 @@ export default function HeroSection({
                                 <span className="bg-stone-50 border border-stone-200 text-stone-600 text-sm font-mono px-3 py-1.5 rounded-xl">
                                     {formatTo12Hour(currentSchedule.endTime)}
                                 </span>
+                                {/* แสดง badge ถ้าอยู่ใน early window */}
+                                {isInEarlyWindow && status === "IDLE" && (
+                                    <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-50 text-amber-600 border border-amber-200">
+                                        เริ่มได้ก่อนกำหนด
+                                    </span>
+                                )}
                             </div>
 
                             {/* Countdown block */}
@@ -427,12 +469,16 @@ export default function HeroSection({
                                 </div>
                             )}
 
-                            {status === "IDLE" && currentSchedule.type === "ติว" ? (
+                            {/* ── ปุ่มเริ่มติว: แสดงเมื่อ IDLE + ติว + canStartSession ── */}
+                            {status === "IDLE" && currentSchedule.type === "ติว" && canStartSession ? (
                                 <button
                                     onClick={handleStartStudy}
                                     className="cursor-pointer w-full bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-white font-black py-3.5 rounded-2xl text-base transition-all shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.4)]"
                                 >
-                                    เริ่มติวเลย →
+                                    {isInEarlyWindow
+                                        ? `เริ่มก่อนกำหนด (${timeToMinutes(currentSchedule.startTime) - nowMinutes} น.) →`
+                                        : "เริ่มติวเลย →"
+                                    }
                                 </button>
                             ) : (
                                 <div className="space-y-3">
@@ -512,7 +558,6 @@ export default function HeroSection({
                                 <>
                                     <p className="text-sm font-bold text-stone-700 leading-tight">{schedule.title}</p>
                                     <p className="text-xs text-stone-400 mt-1 font-mono">
-                                        {/* ── แก้ไข: ใช้ getNextDayLabel แทนการคำนวณ _offsetDays ── */}
                                         {isNext
                                             ? getNextDayLabel(schedule as ScheduleWithTarget)
                                             : `${DAY_NAMES_TH[schedule.dayOfWeek]} `}
