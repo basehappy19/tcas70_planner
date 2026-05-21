@@ -79,7 +79,6 @@ export default function FreeStudySection({ initialSession }: Props) {
             : "IDLE"
     );
 
-    // ── Timer ──
     const [elapsedSeconds, setElapsedSeconds] = useState(() => {
         if (!initialSession) return 0;
         return dayjs().diff(dayjs(initialSession.startedAt), "second");
@@ -149,13 +148,6 @@ export default function FreeStudySection({ initialSession }: Props) {
         else stopTimer();
         return stopTimer;
     }, [status, startTimer, stopTimer]);
-
-    // Init elapsed from server on mount
-    useEffect(() => {
-        if (initialSession && initialSession.status === "IN_PROGRESS") {
-            setElapsedSeconds(dayjs().diff(dayjs(initialSession.startedAt), "second"));
-        }
-    }, []);
 
     // ── Handlers ──
 
@@ -308,11 +300,10 @@ export default function FreeStudySection({ initialSession }: Props) {
                                             setTitleInput(p.label);
                                             setTitleError(false);
                                         }}
-                                        className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                                            titleInput === p.label
+                                        className={`cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${titleInput === p.label
                                                 ? "bg-violet-500 text-white border-violet-500 shadow-[0_2px_8px_rgba(139,92,246,0.35)]"
                                                 : "bg-stone-50 text-stone-600 border-stone-200 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
-                                        }`}
+                                            }`}
                                     >
                                         <span>{p.emoji}</span>
                                         <span>{p.label}</span>
@@ -331,11 +322,10 @@ export default function FreeStudySection({ initialSession }: Props) {
                                     }}
                                     onKeyDown={e => e.key === "Enter" && handleStart()}
                                     placeholder="หรือพิมพ์ชื่อวิชาเอง..."
-                                    className={`w-full bg-stone-50 text-stone-800 text-sm rounded-2xl border px-4 py-3.5 outline-none transition-all placeholder:text-stone-300 ${
-                                        titleError
+                                    className={`w-full bg-stone-50 text-stone-800 text-sm rounded-2xl border px-4 py-3.5 outline-none transition-all placeholder:text-stone-300 ${titleError
                                             ? "border-rose-300 bg-rose-50/50 focus:border-rose-400"
                                             : "border-stone-200 focus:border-violet-300 focus:ring-4 focus:ring-violet-100"
-                                    }`}
+                                        }`}
                                 />
                                 {titleError && (
                                     <p className="text-xs text-rose-400 font-semibold mt-1.5 ml-1">
@@ -361,11 +351,10 @@ export default function FreeStudySection({ initialSession }: Props) {
                 {session && status !== "IDLE" && (
                     <div className="rounded-3xl bg-white shadow-[0_2px_24px_rgba(0,0,0,0.07)] border border-stone-100 overflow-hidden">
                         {/* Accent bar */}
-                        <div className={`h-1.5 w-full ${
-                            status === "IN_PROGRESS"
+                        <div className={`h-1.5 w-full ${status === "IN_PROGRESS"
                                 ? "bg-linear-to-r from-violet-400 to-fuchsia-300"
                                 : "bg-linear-to-r from-orange-400 to-amber-300"
-                        }`} />
+                            }`} />
 
                         <div className="p-6 space-y-5">
                             {/* Title row */}
@@ -378,29 +367,25 @@ export default function FreeStudySection({ initialSession }: Props) {
                                         เริ่ม {dayjs(session.startedAt).format("h:mm A")}
                                     </p>
                                 </div>
-                                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${
-                                    status === "IN_PROGRESS"
+                                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${status === "IN_PROGRESS"
                                         ? "bg-violet-50 text-violet-600 border-violet-200"
                                         : "bg-orange-50 text-orange-600 border-orange-200"
-                                }`}>
+                                    }`}>
                                     {status === "IN_PROGRESS" ? "กำลังเรียน" : "พักเบรก"}
                                 </span>
                             </div>
 
                             {/* Timer display */}
-                            <div className={`rounded-2xl border px-6 py-5 text-center ${
-                                status === "IN_PROGRESS"
+                            <div className={`rounded-2xl border px-6 py-5 text-center ${status === "IN_PROGRESS"
                                     ? "border-violet-100 bg-violet-50"
                                     : "border-orange-100 bg-orange-50"
-                            }`}>
-                                <p className={`text-[10px] font-black uppercase tracking-[0.2em] mb-2 ${
-                                    status === "IN_PROGRESS" ? "text-violet-500" : "text-orange-500"
                                 }`}>
+                                <p className={`text-[10px] font-black uppercase tracking-[0.2em] mb-2 ${status === "IN_PROGRESS" ? "text-violet-500" : "text-orange-500"
+                                    }`}>
                                     เวลาที่เรียนมา
                                 </p>
-                                <p className={`text-5xl font-mono font-black tabular-nums tracking-tight ${
-                                    status === "IN_PROGRESS" ? "text-violet-700" : "text-orange-600"
-                                }`} suppressHydrationWarning>
+                                <p className={`text-5xl font-mono font-black tabular-nums tracking-tight ${status === "IN_PROGRESS" ? "text-violet-700" : "text-orange-600"
+                                    }`} suppressHydrationWarning>
                                     {formatElapsed(elapsedSeconds)}
                                 </p>
 
@@ -413,11 +398,10 @@ export default function FreeStudySection({ initialSession }: Props) {
                             </div>
 
                             {/* Action row */}
-                            <div className={`flex items-center justify-between px-4 py-3 rounded-2xl border ${
-                                status === "IN_PROGRESS"
+                            <div className={`flex items-center justify-between px-4 py-3 rounded-2xl border ${status === "IN_PROGRESS"
                                     ? "border-violet-100 bg-violet-50/50"
                                     : "border-orange-100 bg-orange-50/50"
-                            }`}>
+                                }`}>
                                 <div className="flex items-center gap-2.5">
                                     {status === "IN_PROGRESS" ? (
                                         <>
@@ -516,15 +500,13 @@ export default function FreeStudySection({ initialSession }: Props) {
             {showNoteModal && (
                 <div
                     onClick={resetNoteModal}
-                    className={`fixed inset-0 z-50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 transition-all duration-300 ${
-                        noteModalVisible ? "bg-black/20 opacity-100" : "bg-black/0 opacity-0"
-                    }`}
+                    className={`fixed inset-0 z-50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 transition-all duration-300 ${noteModalVisible ? "bg-black/20 opacity-100" : "bg-black/0 opacity-0"
+                        }`}
                 >
                     <div
                         onClick={e => e.stopPropagation()}
-                        className={`w-full max-w-2xl overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.15)] transition-all duration-300 ${
-                            noteModalVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-95 opacity-0"
-                        }`}
+                        className={`w-full max-w-2xl overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.15)] transition-all duration-300 ${noteModalVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-95 opacity-0"
+                            }`}
                     >
                         <div className="h-1.5 w-full bg-linear-to-r from-blue-400 via-violet-400 to-pink-400" />
 
@@ -552,11 +534,10 @@ export default function FreeStudySection({ initialSession }: Props) {
                                     value={noteText}
                                     onChange={e => { setNoteText(e.target.value); if (noteError) setNoteError(false); }}
                                     placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
-                                    className={`w-full min-h-36 bg-stone-50 text-stone-800 text-sm leading-relaxed rounded-2xl border px-4 py-3.5 outline-none resize-none transition-all placeholder:text-stone-300 ${
-                                        noteError
+                                    className={`w-full min-h-36 bg-stone-50 text-stone-800 text-sm leading-relaxed rounded-2xl border px-4 py-3.5 outline-none resize-none transition-all placeholder:text-stone-300 ${noteError
                                             ? "border-rose-300 focus:border-rose-400 bg-rose-50/50"
                                             : "border-stone-200 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-                                    }`}
+                                        }`}
                                     autoFocus
                                 />
                                 <p className="text-[11px] text-stone-300 mt-1.5 text-right font-mono">{noteText.length}/1000</p>
