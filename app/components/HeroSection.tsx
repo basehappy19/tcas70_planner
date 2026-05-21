@@ -8,7 +8,6 @@ import { addActionLogToDB, createStudySession, finishStudySession, getCurrentSes
 import { uploadImageToDrive } from "@/app/actions/drive";
 import buddhistEra from 'dayjs/plugin/buddhistEra';
 import 'dayjs/locale/th';
-import Image from "next/image";
 
 dayjs.extend(buddhistEra);
 dayjs.locale('th');
@@ -65,6 +64,55 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; dot: string; borde
 
 const getTypeColor = (type: string) => TYPE_COLORS[type] ?? TYPE_COLORS.DEFAULT;
 
+const getSecondsRemaining = (endTime: string): number => {
+    const now = dayjs();
+    const [endH, endM] = endTime.split(":").map(Number);
+    const end = dayjs().hour(endH).minute(endM).second(0);
+    return end.diff(now, "second");
+};
+
+const formatCountdown = (totalSeconds: number) => {
+    const isOver = totalSeconds <= 0;
+    const abs = Math.abs(totalSeconds);
+    const h = String(Math.floor(abs / 3600)).padStart(2, "0");
+    const m = String(Math.floor((abs % 3600) / 60)).padStart(2, "0");
+    const s = String(abs % 60).padStart(2, "0");
+    return { h, m, s, isOver };
+};
+
+/* ── Radial countdown ring ── */
+function CountdownRing({
+    secondsRemaining,
+    totalSeconds,
+    isOver,
+    isPaused,
+}: {
+    secondsRemaining: number;
+    totalSeconds: number;
+    isOver: boolean;
+    isPaused: boolean;
+}) {
+    const size = 64;
+    const stroke = 5;
+    const r = (size - stroke) / 2;
+    const circ = 2 * Math.PI * r;
+    const pct = totalSeconds > 0 ? Math.max(0, Math.min(1, secondsRemaining / totalSeconds)) : 0;
+    const dash = pct * circ;
+    const color = isOver ? "#f43f5e" : isPaused ? "#fb923c" : "#10b981";
+    const trackColor = isOver ? "#ffe4e6" : isPaused ? "#ffedd5" : "#d1fae5";
+    return (
+        <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
+            <circle
+                cx={size/2} cy={size/2} r={r}
+                fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+                strokeDasharray={`${dash} ${circ}`}
+                style={{ transition: "stroke-dasharray 0.8s linear" }}
+            />
+        </svg>
+    );
+}
+
 export default function HeroSection({
     allSchedules,
     initialTime,
@@ -75,22 +123,22 @@ export default function HeroSection({
     initialStatus,
 }: Props) {
     const [currentTime, setCurrentTime] = useState(initialTime);
-
-    // Derive from server-provided initial values — no client-side dayjs() on first render
     const [nowDow, setNowDow] = useState<number>(initialDow);
     const [nowMinutes, setNowMinutes] = useState(initialMinutes);
-
     const [status, setStatus] = useState<"IDLE" | "STUDYING" | "PAUSED">(initialStatus);
-
     const [isSaving, setIsSaving] = useState(false);
-    // canEndSession starts from server-computed value; updated each tick
     const [canEndSession, setCanEndSession] = useState(initialCanEnd);
+
+    const [secondsRemaining, setSecondsRemaining] = useState<number>(() => {
+        const sched = allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null;
+        return sched ? getSecondsRemaining(sched.endTime) : 0;
+    });
+
     const [showNoteModal, setShowNoteModal] = useState(false);
     const [noteModalVisible, setNoteModalVisible] = useState(false);
     const [noteText, setNoteText] = useState("");
     const [selectedDay, setSelectedDay] = useState<number>(initialDow);
     const [noteError, setNoteError] = useState(false);
-
     const [images, setImages] = useState<NoteImageData[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -133,20 +181,16 @@ export default function HeroSection({
         return null;
     }, [allSchedules]);
 
-    // Initialize currentSchedule from server-provided ID to avoid mismatch
     const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(() =>
         allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null
     );
 
     useEffect(() => {
-        const syncStatusInterval = setInterval(async () => {
+        const interval = setInterval(async () => {
             const serverStatus = await getCurrentSessionState();
-            setStatus(currentStatus => {
-                if (serverStatus !== currentStatus) return serverStatus;
-                return currentStatus;
-            });
+            setStatus(cur => serverStatus !== cur ? serverStatus : cur);
         }, 3000);
-        return () => clearInterval(syncStatusInterval);
+        return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
@@ -158,20 +202,20 @@ export default function HeroSection({
             setNowDow(dow);
             setNowMinutes(mins);
 
-            // Update currentSchedule only when not in an active session
-            // If session is active, keep showing the session's schedule even after its scheduled time
             setCurrentSchedule(current => {
                 if (status !== "IDLE" && current) {
-                    // Still in a session: keep the current schedule, just update canEndSession
-                    // so the user can end whenever they want after end time
-                    setCanEndSession(mins >= timeToMinutes(current.endTime));
+                    const secs = getSecondsRemaining(current.endTime);
+                    setSecondsRemaining(secs);
+                    setCanEndSession(secs <= 0);
                     return current;
                 }
-                // IDLE: follow live schedule
                 const live = getCurrentSchedule(dow, mins);
                 if (live) {
-                    setCanEndSession(mins >= timeToMinutes(live.endTime));
+                    const secs = getSecondsRemaining(live.endTime);
+                    setSecondsRemaining(secs);
+                    setCanEndSession(secs <= 0);
                 } else {
+                    setSecondsRemaining(0);
                     setCanEndSession(false);
                 }
                 return live;
@@ -240,49 +284,47 @@ export default function HeroSection({
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
         if (files.length > 0) {
-            const newImages: NoteImageData[] = files.map(file => ({
+            setImages(prev => [...prev, ...files.map(file => ({
                 file,
                 preview: URL.createObjectURL(file),
                 caption: ""
-            }));
-            setImages(prev => [...prev, ...newImages]);
+            }))]);
         }
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
-    const handleRemoveImage = (indexToRemove: number) => {
+    const handleRemoveImage = (i: number) => {
         setImages(prev => {
-            const newImages = [...prev];
-            URL.revokeObjectURL(newImages[indexToRemove].preview);
-            newImages.splice(indexToRemove, 1);
-            return newImages;
+            const updated = [...prev];
+            URL.revokeObjectURL(updated[i].preview);
+            updated.splice(i, 1);
+            return updated;
         });
     };
 
-    const handleCaptionChange = (index: number, newCaption: string) => {
-        setImages(prev => {
-            const newImages = [...prev];
-            newImages[index].caption = newCaption;
-            return newImages;
-        });
+    const handleCaptionChange = (i: number, caption: string) => {
+        setImages(prev => { const u = [...prev]; u[i].caption = caption; return u; });
     };
 
     const resetNoteModal = () => {
         setNoteModalVisible(false);
         setTimeout(() => {
-            setNoteText("");
-            setNoteError(false);
+            setNoteText(""); setNoteError(false);
             images.forEach(img => URL.revokeObjectURL(img.preview));
-            setImages([]);
-            setShowNoteModal(false);
+            setImages([]); setShowNoteModal(false);
         }, 250);
     };
 
-    /* ── Status pill config ── */
+    const countdown = formatCountdown(secondsRemaining);
+    const isActiveSession = status === "STUDYING" || status === "PAUSED";
+    const totalSessionSeconds = currentSchedule
+        ? (timeToMinutes(currentSchedule.endTime) - timeToMinutes(currentSchedule.startTime)) * 60
+        : 0;
+
     const statusConfig = {
-        IDLE:     { label: "ว่าง",         dot: "bg-stone-400",    pill: "bg-stone-100 text-stone-500 border-stone-200" },
-        STUDYING: { label: "กำลังเรียน",   dot: "bg-emerald-500",  pill: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-        PAUSED:   { label: "พักเบรก",      dot: "bg-orange-400",   pill: "bg-orange-50 text-orange-600 border-orange-200" },
+        IDLE:     { label: "ว่าง",         dot: "bg-stone-400",   pill: "bg-stone-100 text-stone-500 border-stone-200" },
+        STUDYING: { label: "กำลังเรียน",   dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+        PAUSED:   { label: "พักเบรก",      dot: "bg-orange-400",  pill: "bg-orange-50 text-orange-600 border-orange-200" },
     };
     const sc = statusConfig[status];
 
@@ -290,55 +332,40 @@ export default function HeroSection({
         <div className="min-h-screen bg-[#FAFAF7] text-stone-800 px-4 py-8 font-sans">
             <div className="max-w-6xl mx-auto space-y-4">
 
-                {/* ── Header ── */}
+                {/* Header */}
                 <div className="flex items-start justify-between">
                     <div>
-                        <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-stone-400 mb-1">
-                            TCAS 70 · Planner
-                        </p>
-                        <p
-                            className="text-3xl md:text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none"
-                            suppressHydrationWarning
-                        >
+                        <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-stone-400 mb-1">TCAS 70 · Planner</p>
+                        <p className="text-3xl md:text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none" suppressHydrationWarning>
                             {currentTime}
                         </p>
                         <p className="text-sm text-stone-400 mt-2 font-medium" suppressHydrationWarning>
                             {DAY_FULL_TH[nowDow]}ที่ {dayjs().format("D MMMM BBBB")}
                         </p>
                     </div>
-
-                    {/* Status pill */}
                     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mt-1 ${sc.pill}`}>
                         <span className={`w-2 h-2 rounded-full ${sc.dot} ${status !== "IDLE" ? "animate-pulse" : ""}`} />
                         {sc.label}
                     </div>
                 </div>
 
-                {/* ── Current Schedule Card ── */}
+                {/* Current Schedule Card */}
                 {currentSchedule ? (
                     <div className="rounded-3xl bg-white shadow-[0_2px_24px_rgba(0,0,0,0.07)] border border-stone-100 overflow-hidden">
-                        {/* colored top accent */}
                         <div className={`h-1.5 w-full ${
                             status === "STUDYING" ? "bg-linear-to-r from-emerald-400 to-teal-300" :
                             status === "PAUSED"   ? "bg-linear-to-r from-orange-400 to-amber-300" :
                                                    "bg-linear-to-r from-stone-200 to-stone-100"
                         }`} />
-
                         <div className="p-6">
                             <div className="flex items-start justify-between mb-1">
-                                <span className="text-[10px] font-black tracking-[0.18em] uppercase text-emerald-600">
-                                    ชั่วโมงนี้
-                                </span>
+                                <span className="text-[10px] font-black tracking-[0.18em] uppercase text-emerald-600">ชั่วโมงนี้</span>
                                 <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${getTypeColor(currentSchedule.type).bg} ${getTypeColor(currentSchedule.type).text} ${getTypeColor(currentSchedule.type).border}`}>
                                     {currentSchedule.type}
                                 </span>
                             </div>
-
-                            <h2 className="text-2xl font-black text-stone-800 mt-1 mb-4 leading-tight">
-                                {currentSchedule.title}
-                            </h2>
-
-                            <div className="flex items-center gap-2 mb-6">
+                            <h2 className="text-2xl font-black text-stone-800 mt-1 mb-4 leading-tight">{currentSchedule.title}</h2>
+                            <div className="flex items-center gap-2 mb-4">
                                 <span className="bg-stone-50 border border-stone-200 text-stone-600 text-sm font-mono px-3 py-1.5 rounded-xl">
                                     {formatTo12Hour(currentSchedule.startTime)}
                                 </span>
@@ -347,6 +374,42 @@ export default function HeroSection({
                                     {formatTo12Hour(currentSchedule.endTime)}
                                 </span>
                             </div>
+
+                            {/* Countdown block */}
+                            {isActiveSession && (
+                                <div className={`mb-5 rounded-2xl px-5 py-4 border flex items-center justify-between gap-4 ${
+                                    countdown.isOver ? "bg-rose-50 border-rose-200" :
+                                    status === "PAUSED" ? "bg-orange-50 border-orange-200" :
+                                    "bg-emerald-50 border-emerald-200"
+                                }`}>
+                                    <div>
+                                        <p className={`text-[10px] font-black tracking-widest uppercase mb-1.5 ${
+                                            countdown.isOver ? "text-rose-400" :
+                                            status === "PAUSED" ? "text-orange-400" : "text-emerald-500"
+                                        }`}>
+                                            {countdown.isOver ? "เลยเวลาแล้ว" : status === "PAUSED" ? "หยุดชั่วคราว" : "เวลาที่เหลือ"}
+                                        </p>
+                                        <p suppressHydrationWarning className={`text-3xl font-mono font-black tabular-nums tracking-tight leading-none ${
+                                            countdown.isOver ? "text-rose-600" :
+                                            status === "PAUSED" ? "text-orange-500" : "text-emerald-700"
+                                        }`}>
+                                            {countdown.h !== "00" && (
+                                                <>{countdown.h}<span className="text-base font-bold opacity-50 mx-0.5">ชม</span></>
+                                            )}
+                                            {countdown.m}<span className="text-base font-bold opacity-50 mx-0.5">น</span>
+                                            {countdown.s}<span className="text-base font-bold opacity-50 ml-0.5">วิ</span>
+                                        </p>
+                                    </div>
+                                    <div className="shrink-0">
+                                        <CountdownRing
+                                            secondsRemaining={secondsRemaining}
+                                            totalSeconds={totalSessionSeconds}
+                                            isOver={countdown.isOver}
+                                            isPaused={status === "PAUSED"}
+                                        />
+                                    </div>
+                                </div>
+                            )}
 
                             {status === "IDLE" && currentSchedule.type === "ติว" ? (
                                 <button
@@ -357,13 +420,10 @@ export default function HeroSection({
                                 </button>
                             ) : (
                                 <div className="space-y-3">
-                                    {/* Status row */}
                                     <div className={`flex justify-between items-center px-4 py-3 rounded-2xl border text-sm ${
-                                        status === "STUDYING"
-                                            ? "border-emerald-200 bg-emerald-50"
-                                            : status === "PAUSED"
-                                                ? "border-orange-200 bg-orange-50"
-                                                : "border-stone-200 bg-stone-50"
+                                        status === "STUDYING" ? "border-emerald-200 bg-emerald-50" :
+                                        status === "PAUSED"   ? "border-orange-200 bg-orange-50" :
+                                                               "border-stone-200 bg-stone-50"
                                     }`}>
                                         <div className="flex items-center gap-2.5">
                                             {status !== "IDLE" && (
@@ -374,8 +434,7 @@ export default function HeroSection({
                                             )}
                                             <span className={`font-semibold text-sm ${
                                                 status === "IDLE" ? "text-stone-500" :
-                                                status === "STUDYING" ? "text-emerald-700" :
-                                                "text-orange-600"
+                                                status === "STUDYING" ? "text-emerald-700" : "text-orange-600"
                                             }`}>
                                                 {status === "IDLE" ? `คาบ${currentSchedule.type}` :
                                                  status === "STUDYING" ? "กำลังเรียนอยู่" : "พักเบรก"}
@@ -383,14 +442,9 @@ export default function HeroSection({
                                         </div>
                                         <div className="flex gap-2">
                                             <button
-                                                onClick={() => {
-                                                    setShowNoteModal(true);
-                                                    requestAnimationFrame(() => setNoteModalVisible(true));
-                                                }}
+                                                onClick={() => { setShowNoteModal(true); requestAnimationFrame(() => setNoteModalVisible(true)); }}
                                                 className="cursor-pointer px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors border border-blue-200"
-                                            >
-                                                จดโน้ต
-                                            </button>
+                                            >จดโน้ต</button>
                                             {status !== "IDLE" && (
                                                 <button
                                                     onClick={() => {
@@ -405,8 +459,6 @@ export default function HeroSection({
                                             )}
                                         </div>
                                     </div>
-
-                                    {/* End session button — always shown, enabled only after end time */}
                                     <button
                                         onClick={handleEndSession}
                                         disabled={!canEndSession || isSaving}
@@ -432,24 +484,17 @@ export default function HeroSection({
                     </div>
                 )}
 
-                {/* ── Prev / Next strip ── */}
+                {/* Prev / Next strip */}
                 <div className="grid grid-cols-2 gap-3">
                     {[
                         { label: "◂ ก่อนหน้า", schedule: prevSchedule, isNext: false },
                         { label: "ถัดไป ▸",    schedule: nextSchedule,  isNext: true  },
                     ].map(({ label, schedule, isNext }) => (
-                        <div
-                            key={label}
-                            className="rounded-2xl bg-white border border-stone-100 shadow-[0_1px_12px_rgba(0,0,0,0.05)] p-4"
-                        >
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">
-                                {label}
-                            </p>
+                        <div key={label} className="rounded-2xl bg-white border border-stone-100 shadow-[0_1px_12px_rgba(0,0,0,0.05)] p-4">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">{label}</p>
                             {schedule ? (
                                 <>
-                                    <p className="text-sm font-bold text-stone-700 leading-tight">
-                                        {schedule.title}
-                                    </p>
+                                    <p className="text-sm font-bold text-stone-700 leading-tight">{schedule.title}</p>
                                     <p className="text-xs text-stone-400 mt-1 font-mono">
                                         {isNext && (schedule as Schedule & { _offsetDays?: number })._offsetDays
                                             ? `${todayLabel((nowDow + ((schedule as Schedule & { _offsetDays?: number })._offsetDays ?? 0)) % 7)} `
@@ -457,9 +502,7 @@ export default function HeroSection({
                                         {formatTo12Hour(schedule.startTime)}–{formatTo12Hour(schedule.endTime)}
                                     </p>
                                     {isNext && nextScheduleCountdown && (
-                                        <p suppressHydrationWarning className="text-[11px] text-emerald-600 font-semibold mt-1">
-                                            {nextScheduleCountdown}
-                                        </p>
+                                        <p suppressHydrationWarning className="text-[11px] text-emerald-600 font-semibold mt-1">{nextScheduleCountdown}</p>
                                     )}
                                     <span className={`mt-2.5 inline-block text-xs px-2 py-0.5 rounded-full font-semibold border ${getTypeColor(schedule.type).bg} ${getTypeColor(schedule.type).text} ${getTypeColor(schedule.type).border}`}>
                                         {schedule.type}
@@ -472,92 +515,53 @@ export default function HeroSection({
                     ))}
                 </div>
 
-                {/* ── Weekly calendar ── */}
+                {/* Weekly calendar */}
                 <div className="rounded-3xl bg-white shadow-[0_2px_20px_rgba(0,0,0,0.06)] border border-stone-100 overflow-hidden">
-                    {/* Day tabs */}
                     <div className="grid grid-cols-7 border-b border-stone-100">
                         {WEEK_ORDER.map(d => {
                             const hasClass = allSchedules.some(s => s.dayOfWeek === d);
                             const isToday = d === nowDow;
                             const isSelected = d === selectedDay;
                             return (
-                                <button
-                                    key={d}
-                                    onClick={() => setSelectedDay(d)}
-                                    className={`cursor-pointer py-3.5 text-center transition-all relative ${
-                                        isSelected ? "bg-stone-50" : "hover:bg-stone-50/70"
-                                    }`}
+                                <button key={d} onClick={() => setSelectedDay(d)}
+                                    className={`cursor-pointer py-3.5 text-center transition-all relative ${isSelected ? "bg-stone-50" : "hover:bg-stone-50/70"}`}
                                 >
-                                    <p className={`text-xs font-bold ${
-                                        isToday ? "text-emerald-600" :
-                                        isSelected ? "text-stone-700" :
-                                        "text-stone-400"
-                                    }`}>
+                                    <p className={`text-xs font-bold ${isToday ? "text-emerald-600" : isSelected ? "text-stone-700" : "text-stone-400"}`}>
                                         {DAY_NAMES_TH[d]}
                                     </p>
-                                    {hasClass && (
-                                        <div className={`mx-auto mt-1.5 w-1.5 h-1.5 rounded-full ${
-                                            isToday ? "bg-emerald-400" : "bg-stone-300"
-                                        }`} />
-                                    )}
-                                    {isSelected && (
-                                        <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-stone-800 rounded-full" />
-                                    )}
+                                    {hasClass && <div className={`mx-auto mt-1.5 w-1.5 h-1.5 rounded-full ${isToday ? "bg-emerald-400" : "bg-stone-300"}`} />}
+                                    {isSelected && <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-stone-800 rounded-full" />}
                                 </button>
                             );
                         })}
                     </div>
-
-                    {/* Schedule list */}
                     <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                         <p className="text-sm font-black text-stone-700">{todayLabel(selectedDay)}</p>
-                        <span className="text-xs text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full font-medium">
-                            {daySchedules.length} คาบ
-                        </span>
+                        <span className="text-xs text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full font-medium">{daySchedules.length} คาบ</span>
                     </div>
-
                     <div className="px-4 pb-4 space-y-2">
                         {daySchedules.length === 0 ? (
-                            <div className="text-center py-8">
-                                <p className="text-sm text-stone-300 font-medium">ไม่มีตารางเรียน</p>
-                            </div>
+                            <div className="text-center py-8"><p className="text-sm text-stone-300 font-medium">ไม่มีตารางเรียน</p></div>
                         ) : daySchedules.map(s => {
                             const isNow = s.dayOfWeek === nowDow &&
-                                timeToMinutes(s.startTime) <= nowMinutes &&
-                                timeToMinutes(s.endTime) >= nowMinutes;
+                                timeToMinutes(s.startTime) <= nowMinutes && timeToMinutes(s.endTime) >= nowMinutes;
                             const isPast = s.dayOfWeek === nowDow
-                                ? timeToMinutes(s.endTime) < nowMinutes
-                                : s.dayOfWeek < nowDow;
+                                ? timeToMinutes(s.endTime) < nowMinutes : s.dayOfWeek < nowDow;
                             const colors = getTypeColor(s.type);
                             return (
-                                <div
-                                    key={s.id}
-                                    className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
-                                        isNow
-                                            ? "border-emerald-200 bg-emerald-50 shadow-[0_2px_12px_rgba(5,150,105,0.08)]"
-                                            : isPast
-                                                ? "border-stone-100 bg-transparent opacity-40"
-                                                : "border-stone-100 bg-stone-50/60 hover:bg-stone-50"
-                                    }`}
-                                >
+                                <div key={s.id} className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
+                                    isNow ? "border-emerald-200 bg-emerald-50 shadow-[0_2px_12px_rgba(5,150,105,0.08)]" :
+                                    isPast ? "border-stone-100 bg-transparent opacity-40" :
+                                    "border-stone-100 bg-stone-50/60 hover:bg-stone-50"
+                                }`}>
                                     <div className={`w-1 self-stretch rounded-full ${isNow ? "bg-emerald-400" : colors.dot}`} />
                                     <div className="flex-1 min-w-0">
-                                        <p className={`text-sm font-bold truncate ${isPast && !isNow ? "text-stone-400" : "text-stone-700"}`}>
-                                            {s.title}
-                                        </p>
-                                        <p className="text-xs text-stone-400 font-mono mt-0.5">
-                                            {formatTo12Hour(s.startTime)} – {formatTo12Hour(s.endTime)}
-                                        </p>
+                                        <p className={`text-sm font-bold truncate ${isPast && !isNow ? "text-stone-400" : "text-stone-700"}`}>{s.title}</p>
+                                        <p className="text-xs text-stone-400 font-mono mt-0.5">{formatTo12Hour(s.startTime)} – {formatTo12Hour(s.endTime)}</p>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${colors.bg} ${colors.text} ${colors.border}`}>
-                                            {s.type}
-                                        </span>
-                                        {isNow && (
-                                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold shadow-sm">
-                                                ตอนนี้
-                                            </span>
-                                        )}
+                                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${colors.bg} ${colors.text} ${colors.border}`}>{s.type}</span>
+                                        {isNow && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold shadow-sm">ตอนนี้</span>}
                                     </div>
                                 </div>
                             );
@@ -567,7 +571,7 @@ export default function HeroSection({
 
             </div>
 
-            {/* ── Note Modal ── */}
+            {/* Note Modal */}
             {showNoteModal && (
                 <div
                     onClick={resetNoteModal}
@@ -581,59 +585,36 @@ export default function HeroSection({
                             noteModalVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-95 opacity-0"
                         }`}
                     >
-                        {/* Accent strip */}
                         <div className="h-1.5 w-full bg-linear-to-r from-blue-400 via-violet-400 to-pink-400" />
-
-                        {/* Header */}
                         <div className="flex items-start justify-between px-6 pt-5 pb-5 border-b border-stone-100">
                             <div>
                                 <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-base">
-                                        📝
-                                    </div>
-                                    <h3 className="text-lg font-black text-stone-800">
-                                        จดบันทึกระหว่างเรียน
-                                    </h3>
+                                    <div className="w-8 h-8 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-base">📝</div>
+                                    <h3 className="text-lg font-black text-stone-800">จดบันทึกระหว่างเรียน</h3>
                                 </div>
-                                <p className="text-sm text-stone-400 mt-2 ml-10.5">
-                                    บันทึกสูตร จุดที่ยังไม่เข้าใจ หรือสิ่งที่ต้องทบทวน
-                                </p>
+                                <p className="text-sm text-stone-400 mt-2 ml-10.5">บันทึกสูตร จุดที่ยังไม่เข้าใจ หรือสิ่งที่ต้องทบทวน</p>
                             </div>
-                            <button
-                                onClick={resetNoteModal}
-                                className="cursor-pointer shrink-0 w-9 h-9 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center text-sm font-bold"
-                            >
-                                ✕
-                            </button>
+                            <button onClick={resetNoteModal} className="cursor-pointer shrink-0 w-9 h-9 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center text-sm font-bold">✕</button>
                         </div>
-
-                        {/* Body */}
                         <div className="px-6 py-5 space-y-4">
                             <div>
                                 <textarea
                                     value={noteText}
-                                    onChange={e => {
-                                        setNoteText(e.target.value);
-                                        if (noteError) setNoteError(false);
-                                    }}
+                                    onChange={e => { setNoteText(e.target.value); if (noteError) setNoteError(false); }}
                                     placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
                                     className={`w-full min-h-36 bg-stone-50 text-stone-800 text-sm leading-relaxed rounded-2xl border px-4 py-3.5 outline-none resize-none transition-all placeholder:text-stone-300 ${
-                                        noteError
-                                            ? "border-rose-300 focus:border-rose-400 bg-rose-50/50"
-                                            : "border-stone-200 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                                        noteError ? "border-rose-300 focus:border-rose-400 bg-rose-50/50" :
+                                        "border-stone-200 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                                     }`}
                                     autoFocus
                                 />
-                                <p className="text-[11px] text-stone-300 mt-1.5 text-right font-mono">
-                                    {noteText.length}/1000
-                                </p>
+                                <p className="text-[11px] text-stone-300 mt-1.5 text-right font-mono">{noteText.length}/1000</p>
                             </div>
-
-                            {/* Image upload */}
                             <div>
+                                {/* รองรับ PNG, JPG, GIF, WebP ทั้งหมด */}
                                 <input
                                     type="file"
-                                    accept="image/*"
+                                    accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
                                     multiple
                                     className="hidden"
                                     ref={fileInputRef}
@@ -646,22 +627,20 @@ export default function HeroSection({
                                 >
                                     <span>📷</span>
                                     <span>แนบรูปภาพ</span>
+                                    <span className="text-[11px] text-stone-400 font-normal">(PNG, JPG, GIF, WebP)</span>
                                     {images.length > 0 && (
-                                        <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-bold">
-                                            {images.length}
-                                        </span>
+                                        <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-bold">{images.length}</span>
                                     )}
                                 </button>
                             </div>
-
-                            {/* Image list */}
                             {images.length > 0 && (
                                 <div className="space-y-2.5 max-h-60 overflow-y-auto">
                                     {images.map((img, index) => (
                                         <div key={index} className="flex gap-3.5 rounded-2xl border border-stone-100 bg-stone-50 p-3">
                                             <div className="relative shrink-0">
-                                                <Image
-                                                    width={80} height={80}
+                                                {/* ใช้ <img> แทน next/image เพราะ preview เป็น blob URL */}
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
                                                     src={img.preview}
                                                     alt={`Preview ${index}`}
                                                     className="w-20 h-20 rounded-xl object-cover border border-stone-200"
@@ -670,14 +649,10 @@ export default function HeroSection({
                                                     type="button"
                                                     onClick={() => handleRemoveImage(index)}
                                                     className="cursor-pointer absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-400 text-white text-[10px] font-bold flex items-center justify-center shadow transition-colors"
-                                                >
-                                                    ✕
-                                                </button>
+                                                >✕</button>
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">
-                                                    คำอธิบาย
-                                                </p>
+                                                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">คำอธิบาย</p>
                                                 <textarea
                                                     value={img.caption}
                                                     onChange={e => handleCaptionChange(index, e.target.value)}
@@ -690,43 +665,29 @@ export default function HeroSection({
                                     ))}
                                 </div>
                             )}
-
                             {noteError && (
                                 <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-                                    <p className="text-sm text-rose-500 font-semibold">
-                                        ⚠️ กรุณากรอกข้อความหรือแนบรูปภาพก่อนบันทึก
-                                    </p>
+                                    <p className="text-sm text-rose-500 font-semibold">⚠️ กรุณากรอกข้อความหรือแนบรูปภาพก่อนบันทึก</p>
                                 </div>
                             )}
                         </div>
-
-                        {/* Footer */}
                         <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-1">
-                            <button
-                                type="button"
-                                onClick={resetNoteModal}
-                                disabled={isUploading}
+                            <button type="button" onClick={resetNoteModal} disabled={isUploading}
                                 className="cursor-pointer h-12 rounded-2xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-sm font-bold text-stone-500 transition-all disabled:opacity-50"
-                            >
-                                ยกเลิก
-                            </button>
+                            >ยกเลิก</button>
                             <button
                                 onClick={async () => {
-                                    if (!noteText.trim() && images.length === 0) {
-                                        setNoteError(true);
-                                        return;
-                                    }
+                                    if (!noteText.trim() && images.length === 0) { setNoteError(true); return; }
                                     setIsUploading(true);
                                     let uploadedImages: { url: string; caption: string }[] = [];
                                     if (images.length > 0) {
-                                        const uploadPromises = images.map(async img => {
+                                        const results = await Promise.all(images.map(async img => {
                                             const formData = new FormData();
                                             formData.append("file", img.file);
-                                            const uploadRes = await uploadImageToDrive(formData);
-                                            return uploadRes.success ? { url: uploadRes.url, caption: img.caption } : null;
-                                        });
-                                        const results = await Promise.all(uploadPromises);
-                                        uploadedImages = results.filter((res): res is { url: string; caption: string } => res !== null);
+                                            const res = await uploadImageToDrive(formData);
+                                            return res.success ? { url: res.url as string, caption: img.caption } : null;
+                                        }));
+                                        uploadedImages = results.filter((r): r is { url: string; caption: string } => r !== null);
                                     }
                                     if (status === "IDLE" && currentSchedule?.id) {
                                         await createStudySession({ scheduleId: currentSchedule.id });

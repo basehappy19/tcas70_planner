@@ -14,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="bg-[#0a0a0a] text-white font-sans antialiased flex flex-col md:flex-row min-h-screen">
+      <body className="bg-[#FAFAF7] text-white font-sans antialiased flex flex-col md:flex-row min-h-screen">
         <Sidebar />
 
         <main className="flex-1 overflow-y-auto pb-24 md:pb-0">
