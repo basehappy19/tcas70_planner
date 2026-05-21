@@ -28,6 +28,10 @@ type Schedule = {
 type Props = {
     allSchedules: Schedule[];
     initialTime: string;
+    initialDow: number;
+    initialMinutes: number;
+    initialCurrentScheduleId: number | null;
+    initialCanEnd: boolean;
     initialStatus: "IDLE" | "STUDYING" | "PAUSED";
 };
 
@@ -61,19 +65,30 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; dot: string; borde
 
 const getTypeColor = (type: string) => TYPE_COLORS[type] ?? TYPE_COLORS.DEFAULT;
 
-export default function HeroSection({ allSchedules, initialTime, initialStatus }: Props) {
+export default function HeroSection({
+    allSchedules,
+    initialTime,
+    initialDow,
+    initialMinutes,
+    initialCurrentScheduleId,
+    initialCanEnd,
+    initialStatus,
+}: Props) {
     const [currentTime, setCurrentTime] = useState(initialTime);
-    const [nowDow, setNowDow] = useState<number>(dayjs().day());
-    const [nowMinutes, setNowMinutes] = useState(timeToMinutes(dayjs().format("HH:mm")));
+
+    // Derive from server-provided initial values — no client-side dayjs() on first render
+    const [nowDow, setNowDow] = useState<number>(initialDow);
+    const [nowMinutes, setNowMinutes] = useState(initialMinutes);
 
     const [status, setStatus] = useState<"IDLE" | "STUDYING" | "PAUSED">(initialStatus);
 
     const [isSaving, setIsSaving] = useState(false);
-    const [canEndSession, setCanEndSession] = useState(false);
+    // canEndSession starts from server-computed value; updated each tick
+    const [canEndSession, setCanEndSession] = useState(initialCanEnd);
     const [showNoteModal, setShowNoteModal] = useState(false);
     const [noteModalVisible, setNoteModalVisible] = useState(false);
     const [noteText, setNoteText] = useState("");
-    const [selectedDay, setSelectedDay] = useState<number>(dayjs().day());
+    const [selectedDay, setSelectedDay] = useState<number>(initialDow);
     const [noteError, setNoteError] = useState(false);
 
     const [images, setImages] = useState<NoteImageData[]>([]);
@@ -118,8 +133,9 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
         return null;
     }, [allSchedules]);
 
-    const [currentSchedule, setCurrentSchedule] = useState(() =>
-        getCurrentSchedule(dayjs().day(), timeToMinutes(dayjs().format("HH:mm")))
+    // Initialize currentSchedule from server-provided ID to avoid mismatch
+    const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(() =>
+        allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null
     );
 
     useEffect(() => {
@@ -142,19 +158,27 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
             setNowDow(dow);
             setNowMinutes(mins);
 
+            // Update currentSchedule only when not in an active session
+            // If session is active, keep showing the session's schedule even after its scheduled time
             setCurrentSchedule(current => {
-                if (status !== "IDLE" && current && timeToMinutes(current.endTime) > mins) return current;
-                return getCurrentSchedule(dow, mins);
+                if (status !== "IDLE" && current) {
+                    // Still in a session: keep the current schedule, just update canEndSession
+                    // so the user can end whenever they want after end time
+                    setCanEndSession(mins >= timeToMinutes(current.endTime));
+                    return current;
+                }
+                // IDLE: follow live schedule
+                const live = getCurrentSchedule(dow, mins);
+                if (live) {
+                    setCanEndSession(mins >= timeToMinutes(live.endTime));
+                } else {
+                    setCanEndSession(false);
+                }
+                return live;
             });
-
-            if (currentSchedule?.endTime) {
-                const [endH, endM] = currentSchedule.endTime.split(":");
-                const scheduledEnd = dayjs().hour(Number(endH)).minute(Number(endM)).second(0);
-                setCanEndSession(now.isSameOrAfter(scheduledEnd));
-            }
         }, 1000);
         return () => clearInterval(timer);
-    }, [currentSchedule, getCurrentSchedule, status]);
+    }, [getCurrentSchedule, status]);
 
     const getTimeUntilNextSchedule = () => {
         if (!nextSchedule) return null;
@@ -278,7 +302,7 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                         >
                             {currentTime}
                         </p>
-                        <p className="text-sm text-stone-400 mt-2 font-medium">
+                        <p className="text-sm text-stone-400 mt-2 font-medium" suppressHydrationWarning>
                             {DAY_FULL_TH[nowDow]}ที่ {dayjs().format("D MMMM BBBB")}
                         </p>
                     </div>
@@ -382,6 +406,7 @@ export default function HeroSection({ allSchedules, initialTime, initialStatus }
                                         </div>
                                     </div>
 
+                                    {/* End session button — always shown, enabled only after end time */}
                                     <button
                                         onClick={handleEndSession}
                                         disabled={!canEndSession || isSaving}
