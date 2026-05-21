@@ -8,3 +8,8 @@
   box-sizing: border-box;
   font-family: "Mittraphap", Arial, Helvetica, sans-serif;
 }
+
+body {
+  overflow: hidden;
+  height: 100vh;
+}

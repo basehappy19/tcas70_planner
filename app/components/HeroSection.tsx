@@ -297,7 +297,7 @@ export default function HeroSection({
                             TCAS 70 · Planner
                         </p>
                         <p
-                            className="text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none"
+                            className="text-3xl md:text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none"
                             suppressHydrationWarning
                         >
                             {currentTime}
