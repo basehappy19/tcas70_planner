@@ -131,9 +131,8 @@ export default function HeroSection({
 }: Props) {
     const router = useRouter();
 
-    // ── Fix hydration #418: ใช้ "" เป็น initial แล้ว sync จริงหลัง mount ──
-    // ถ้าใช้ initialTime ตรงๆ server และ client จะ render ต่างกัน (เวลาต่างกัน ~ms)
     const [currentTime, setCurrentTime] = useState("");
+    const [currentDate, setCurrentDate] = useState("");
     const [nowDow, setNowDow] = useState<number>(initialDow);
     const [nowMinutes, setNowMinutes] = useState(initialMinutes);
     const [status, setStatus] = useState<"IDLE" | "STUDYING" | "PAUSED">(initialStatus);
@@ -223,6 +222,7 @@ export default function HeroSection({
         const tick = () => {
             const now = dayjs();
             setCurrentTime(now.format("h:mm:ss A"));
+            setCurrentDate(now.format("D MMMM BBBB"));
             const dow = now.day();
             const mins = timeToMinutes(now.format("HH:mm"));
             setNowDow(dow);
@@ -391,15 +391,14 @@ export default function HeroSection({
                 <div className="flex items-start justify-between">
                     <div>
                         <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-stone-400 mb-1">TCAS 70 · Planner</p>
-                        {/* suppressHydrationWarning เพราะ currentTime เริ่มเป็น "" แล้ว set หลัง mount */}
                         <p
                             className="text-3xl md:text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none"
                             suppressHydrationWarning
                         >
                             {currentTime || initialTime}
                         </p>
-                        <p className="text-sm text-stone-400 mt-2 font-medium" suppressHydrationWarning>
-                            {DAY_FULL_TH[nowDow]}ที่ {dayjs().format("D MMMM BBBB")}
+                        <p className="text-sm text-stone-400 mt-2 font-medium">
+                            {currentDate ? `${DAY_FULL_TH[nowDow]}ที่ ${currentDate}` : ""}
                         </p>
                     </div>
                     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mt-1 ${sc.pill}`}>
