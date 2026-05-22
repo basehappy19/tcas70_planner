@@ -1,3 +1,4 @@
+// page.tsx
 import prisma from "@/lib/prisma";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
@@ -11,6 +12,22 @@ const timeToMinutes = (time: string) => {
     return h * 60 + m;
 };
 
+const EARLY_START_MINUTES = 5;
+
+function getThaiNow() {
+    return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+}
+
+async function getActiveStudyLog() {
+    const now = getThaiNow();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return prisma.studyLog.findFirst({
+        where: { status: "STUDYING", date: { gte: startOfDay } },
+        include: { schedule: true },
+        orderBy: { id: "desc" },
+    });
+}
+
 export default async function Page() {
     const bkkTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" });
     const now = dayjs(bkkTime);
@@ -19,25 +36,30 @@ export default async function Page() {
     const initialDow = now.day();
     const initialMinutes = timeToMinutes(now.format("HH:mm"));
 
-    const allSchedules = await prisma.schedule.findMany({
-        orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
-    });
+    const [allSchedules, initialStatus, activeLog] = await Promise.all([
+        prisma.schedule.findMany({
+            orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+        }),
+        getCurrentSessionState(),
+        getActiveStudyLog(),
+    ]);
 
-    // Compute current schedule on server so client shows correct data immediately
-    const initialCurrentSchedule =
-        allSchedules.find(
+    let initialCurrentSchedule = null;
+
+    if (initialStatus === "STUDYING" && activeLog?.schedule) {
+        initialCurrentSchedule = allSchedules.find(s => s.id === activeLog.schedule.id) ?? null;
+    } else {
+        initialCurrentSchedule = allSchedules.find(
             (s) =>
                 s.dayOfWeek === initialDow &&
-                timeToMinutes(s.startTime) <= initialMinutes &&
+                timeToMinutes(s.startTime) - EARLY_START_MINUTES <= initialMinutes &&
                 timeToMinutes(s.endTime) >= initialMinutes
         ) ?? null;
+    }
 
-    // canEndSession: true only if current time >= schedule end time
     const initialCanEnd = initialCurrentSchedule
         ? initialMinutes >= timeToMinutes(initialCurrentSchedule.endTime)
         : false;
-
-    const initialStatus = await getCurrentSessionState();
 
     return (
         <main>
