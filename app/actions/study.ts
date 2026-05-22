@@ -144,3 +144,15 @@ export async function finishStudySession() {
         return { success: false };
     }
 }
+
+export async function getLatestSchedules() {
+    try {
+        const schedules = await prisma.schedule.findMany({
+            orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+        });
+        return { success: true, schedules };
+    } catch (e) {
+        console.error(e);
+        return { success: false, schedules: [] };
+    }
+}

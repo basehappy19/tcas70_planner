@@ -5,7 +5,7 @@ import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 import isBetween from "dayjs/plugin/isBetween";
-import { addActionLogToDB, createStudySession, finishStudySession } from "@/app/actions/study";
+import { addActionLogToDB, createStudySession, finishStudySession, getLatestSchedules } from "@/app/actions/study";
 import { uploadImageToDrive } from "@/app/actions/drive";
 import buddhistEra from 'dayjs/plugin/buddhistEra';
 import 'dayjs/locale/th';
@@ -61,11 +61,11 @@ const timeToMinutes = (time: string) => {
 };
 
 const TYPE_COLORS: Record<string, { bg: string; text: string; dot: string; border: string }> = {
-    'ติว':      { bg: "bg-blue-50",    text: "text-blue-600",    dot: "bg-blue-400",    border: "border-blue-200" },
+    'ติว': { bg: "bg-blue-50", text: "text-blue-600", dot: "bg-blue-400", border: "border-blue-200" },
     'เวลาว่าง': { bg: "bg-emerald-50", text: "text-emerald-600", dot: "bg-emerald-400", border: "border-emerald-200" },
-    'ลองสอบ':  { bg: "bg-violet-50",  text: "text-violet-600",  dot: "bg-violet-400",  border: "border-violet-200" },
-    'อื่น ๆ':   { bg: "bg-orange-50",  text: "text-orange-600",  dot: "bg-orange-400",  border: "border-orange-200" },
-    'DEFAULT':  { bg: "bg-stone-100",  text: "text-stone-500",   dot: "bg-stone-400",   border: "border-stone-200" },
+    'ลองสอบ': { bg: "bg-violet-50", text: "text-violet-600", dot: "bg-violet-400", border: "border-violet-200" },
+    'อื่น ๆ': { bg: "bg-orange-50", text: "text-orange-600", dot: "bg-orange-400", border: "border-orange-200" },
+    'DEFAULT': { bg: "bg-stone-100", text: "text-stone-500", dot: "bg-stone-400", border: "border-stone-200" },
 };
 
 const getTypeColor = (type: string) => TYPE_COLORS[type] ?? TYPE_COLORS.DEFAULT;
@@ -108,9 +108,9 @@ function CountdownRing({
     const trackColor = isOver ? "#ffe4e6" : isPaused ? "#ffedd5" : "#d1fae5";
     return (
         <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
             <circle
-                cx={size/2} cy={size/2} r={r}
+                cx={size / 2} cy={size / 2} r={r}
                 fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
                 strokeDasharray={`${dash} ${circ}`}
                 style={{ transition: "stroke-dasharray 0.8s linear" }}
@@ -153,11 +153,23 @@ export default function HeroSection({
     const [images, setImages] = useState<NoteImageData[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [schedules, setSchedules] = useState(allSchedules);
 
-    // ── getCurrentSchedule: match ได้ก่อนเวลาจริง EARLY_START_MINUTES นาที ──
-    // แต่เฉพาะเมื่อ status=IDLE (ยังไม่มีคาบที่กำลังเรียนอยู่)
+    useEffect(() => {
+        const poll = async () => {
+            const res = await getLatestSchedules();
+            if (res.success && res.schedules.length > 0) {
+                setSchedules(res.schedules);
+            }
+        };
+
+        poll();
+        const interval = setInterval(poll, 30_000);
+        return () => clearInterval(interval);
+    }, []);
+
     const getCurrentSchedule = useCallback((dow: number, mins: number, earlyAllowed = false) => {
-        return allSchedules.find(s =>
+        return schedules.find(s =>
             s.dayOfWeek === dow &&
             (earlyAllowed
                 ? timeToMinutes(s.startTime) - EARLY_START_MINUTES <= mins
@@ -165,38 +177,38 @@ export default function HeroSection({
             ) &&
             timeToMinutes(s.endTime) >= mins
         ) ?? null;
-    }, [allSchedules]);
+    }, [schedules]);
 
     const getPrevSchedule = useCallback((dow: number, mins: number) => {
-        const todayPrev = allSchedules
+        const todayPrev = schedules
             .filter(s => s.dayOfWeek === dow && timeToMinutes(s.endTime) < mins)
             .sort((a, b) => timeToMinutes(b.endTime) - timeToMinutes(a.endTime))[0];
         if (todayPrev) return todayPrev;
         for (let i = 1; i <= 7; i++) {
             const d = ((dow - i) + 7) % 7;
-            const last = allSchedules
+            const last = schedules
                 .filter(s => s.dayOfWeek === d)
                 .sort((a, b) => timeToMinutes(b.endTime) - timeToMinutes(a.endTime))[0];
             if (last) return last;
         }
         return null;
-    }, [allSchedules]);
+    }, [schedules]);
 
     const getNextSchedule = useCallback((dow: number, mins: number): ScheduleWithTarget | null => {
-        const todayNext = allSchedules
+        const todayNext = schedules
             .filter(s => s.dayOfWeek === dow && timeToMinutes(s.startTime) > mins)
             .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))[0];
         if (todayNext) return { ...todayNext, _targetDate: dayjs() };
 
         for (let i = 1; i <= 7; i++) {
             const d = (dow + i) % 7;
-            const first = allSchedules
+            const first = schedules
                 .filter(s => s.dayOfWeek === d)
                 .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))[0];
             if (first) return { ...first, _targetDate: dayjs().add(i, "day") };
         }
         return null;
-    }, [allSchedules]);
+    }, [schedules]);
 
     const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(() =>
         allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null
@@ -207,7 +219,6 @@ export default function HeroSection({
         ? nowMinutes >= timeToMinutes(currentSchedule.startTime) - EARLY_START_MINUTES
         : false;
 
-    // ── Sync real time หลัง mount (แก้ hydration) + tick ทุก 1 วินาที ──
     useEffect(() => {
         const tick = () => {
             const now = dayjs();
@@ -224,12 +235,11 @@ export default function HeroSection({
                     setCanEndSession(secs <= 0);
                     return current;
                 }
-                // IDLE: ใช้ earlyAllowed=true เพื่อให้คาบใหม่ขึ้นมาก่อน 5 นาที
+
                 const live = getCurrentSchedule(dow, mins, true);
                 if (live) {
                     const secs = getSecondsRemaining(live.endTime);
                     setSecondsRemaining(secs);
-                    // canEnd: จบได้เมื่อเลยเวลาจริงแล้วเท่านั้น (ไม่ใช่ช่วง early)
                     setCanEndSession(secs <= 0);
                 } else {
                     setSecondsRemaining(0);
@@ -274,7 +284,7 @@ export default function HeroSection({
     const prevSchedule = getPrevSchedule(nowDow, nowMinutes);
     const nextSchedule = getNextSchedule(nowDow, nowMinutes);
     const nextScheduleCountdown = getTimeUntilNextSchedule();
-    const daySchedules = allSchedules
+    const daySchedules = schedules
         .filter(s => s.dayOfWeek === selectedDay)
         .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
@@ -367,9 +377,9 @@ export default function HeroSection({
         : false;
 
     const statusConfig = {
-        IDLE:     { label: "ว่าง",         dot: "bg-stone-400",   pill: "bg-stone-100 text-stone-500 border-stone-200" },
-        STUDYING: { label: "กำลังเรียน",   dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-        PAUSED:   { label: "พักเบรก",      dot: "bg-orange-400",  pill: "bg-orange-50 text-orange-600 border-orange-200" },
+        IDLE: { label: "ว่าง", dot: "bg-stone-400", pill: "bg-stone-100 text-stone-500 border-stone-200" },
+        STUDYING: { label: "กำลังเรียน", dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+        PAUSED: { label: "พักเบรก", dot: "bg-orange-400", pill: "bg-orange-50 text-orange-600 border-orange-200" },
     };
     const sc = statusConfig[status];
 
@@ -401,12 +411,11 @@ export default function HeroSection({
                 {/* Current Schedule Card */}
                 {currentSchedule ? (
                     <div className="rounded-3xl bg-white shadow-[0_2px_24px_rgba(0,0,0,0.07)] border border-stone-100 overflow-hidden">
-                        <div className={`h-1.5 w-full ${
-                            status === "STUDYING" ? "bg-linear-to-r from-emerald-400 to-teal-300" :
-                            status === "PAUSED"   ? "bg-linear-to-r from-orange-400 to-amber-300" :
-                            isInEarlyWindow       ? "bg-linear-to-r from-amber-300 to-yellow-200" :
-                                                   "bg-linear-to-r from-stone-200 to-stone-100"
-                        }`} />
+                        <div className={`h-1.5 w-full ${status === "STUDYING" ? "bg-linear-to-r from-emerald-400 to-teal-300" :
+                            status === "PAUSED" ? "bg-linear-to-r from-orange-400 to-amber-300" :
+                                isInEarlyWindow ? "bg-linear-to-r from-amber-300 to-yellow-200" :
+                                    "bg-linear-to-r from-stone-200 to-stone-100"
+                            }`} />
                         <div className="p-6">
                             <div className="flex items-start justify-between mb-1">
                                 <span className={`text-[10px] font-black tracking-[0.18em] uppercase ${isInEarlyWindow ? "text-amber-500" : "text-emerald-600"}`}>
@@ -435,22 +444,19 @@ export default function HeroSection({
 
                             {/* Countdown block */}
                             {isActiveSession && (
-                                <div className={`mb-5 rounded-2xl px-5 py-4 border flex items-center justify-between gap-4 ${
-                                    countdown.isOver ? "bg-rose-50 border-rose-200" :
+                                <div className={`mb-5 rounded-2xl px-5 py-4 border flex items-center justify-between gap-4 ${countdown.isOver ? "bg-rose-50 border-rose-200" :
                                     status === "PAUSED" ? "bg-orange-50 border-orange-200" :
-                                    "bg-emerald-50 border-emerald-200"
-                                }`}>
+                                        "bg-emerald-50 border-emerald-200"
+                                    }`}>
                                     <div>
-                                        <p className={`text-[10px] font-black tracking-widest uppercase mb-1.5 ${
-                                            countdown.isOver ? "text-rose-400" :
+                                        <p className={`text-[10px] font-black tracking-widest uppercase mb-1.5 ${countdown.isOver ? "text-rose-400" :
                                             status === "PAUSED" ? "text-orange-400" : "text-emerald-500"
-                                        }`}>
+                                            }`}>
                                             {countdown.isOver ? "เลยเวลาแล้ว" : status === "PAUSED" ? "หยุดชั่วคราว" : "เวลาที่เหลือ"}
                                         </p>
-                                        <p suppressHydrationWarning className={`text-3xl font-mono font-black tabular-nums tracking-tight leading-none ${
-                                            countdown.isOver ? "text-rose-600" :
+                                        <p suppressHydrationWarning className={`text-3xl font-mono font-black tabular-nums tracking-tight leading-none ${countdown.isOver ? "text-rose-600" :
                                             status === "PAUSED" ? "text-orange-500" : "text-emerald-700"
-                                        }`}>
+                                            }`}>
                                             {countdown.h !== "00" && (
                                                 <>{countdown.h}<span className="text-base font-bold opacity-50 mx-0.5">ชม</span></>
                                             )}
@@ -482,11 +488,10 @@ export default function HeroSection({
                                 </button>
                             ) : (
                                 <div className="space-y-3">
-                                    <div className={`flex justify-between items-center px-4 py-3 rounded-2xl border text-sm ${
-                                        status === "STUDYING" ? "border-emerald-200 bg-emerald-50" :
-                                        status === "PAUSED"   ? "border-orange-200 bg-orange-50" :
-                                                               "border-stone-200 bg-stone-50"
-                                    }`}>
+                                    <div className={`flex justify-between items-center px-4 py-3 rounded-2xl border text-sm ${status === "STUDYING" ? "border-emerald-200 bg-emerald-50" :
+                                        status === "PAUSED" ? "border-orange-200 bg-orange-50" :
+                                            "border-stone-200 bg-stone-50"
+                                        }`}>
                                         <div className="flex items-center gap-2.5">
                                             {status !== "IDLE" && (
                                                 <span className="relative flex h-2.5 w-2.5">
@@ -494,12 +499,11 @@ export default function HeroSection({
                                                     <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${status === "STUDYING" ? "bg-emerald-500" : "bg-orange-400"}`} />
                                                 </span>
                                             )}
-                                            <span className={`font-semibold text-sm ${
-                                                status === "IDLE" ? "text-stone-500" :
+                                            <span className={`font-semibold text-sm ${status === "IDLE" ? "text-stone-500" :
                                                 status === "STUDYING" ? "text-emerald-700" : "text-orange-600"
-                                            }`}>
+                                                }`}>
                                                 {status === "IDLE" ? `คาบ${currentSchedule.type}` :
-                                                 status === "STUDYING" ? "กำลังเรียนอยู่" : "พักเบรก"}
+                                                    status === "STUDYING" ? "กำลังเรียนอยู่" : "พักเบรก"}
                                             </span>
                                         </div>
                                         <div className="flex gap-2">
@@ -524,15 +528,14 @@ export default function HeroSection({
                                     <button
                                         onClick={handleEndSession}
                                         disabled={!canEndSession || isSaving}
-                                        className={`w-full py-3 rounded-2xl text-sm font-bold transition-all border ${
-                                            canEndSession && !isSaving
-                                                ? "cursor-pointer border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white hover:border-rose-500 hover:shadow-[0_4px_16px_rgba(244,63,94,0.25)]"
-                                                : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-300"
-                                        }`}
+                                        className={`w-full py-3 rounded-2xl text-sm font-bold transition-all border ${canEndSession && !isSaving
+                                            ? "cursor-pointer border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white hover:border-rose-500 hover:shadow-[0_4px_16px_rgba(244,63,94,0.25)]"
+                                            : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-300"
+                                            }`}
                                     >
                                         {isSaving ? "กำลังบันทึก..." :
-                                         canEndSession ? (status === "IDLE" ? "จบคาบ" : "จบชั่วโมงการเรียน") :
-                                         `ยังไม่ถึงเวลาจบ · ${formatTo12Hour(currentSchedule.endTime)}`}
+                                            canEndSession ? (status === "IDLE" ? "จบคาบ" : "จบชั่วโมงการเรียน") :
+                                                `ยังไม่ถึงเวลาจบ · ${formatTo12Hour(currentSchedule.endTime)}`}
                                     </button>
                                 </div>
                             )}
@@ -550,7 +553,7 @@ export default function HeroSection({
                 <div className="grid grid-cols-2 gap-3">
                     {[
                         { label: "◂ ก่อนหน้า", schedule: prevSchedule as ScheduleWithTarget | null, isNext: false },
-                        { label: "ถัดไป ▸",    schedule: nextSchedule,                               isNext: true  },
+                        { label: "ถัดไป ▸", schedule: nextSchedule, isNext: true },
                     ].map(({ label, schedule, isNext }) => (
                         <div key={label} className="rounded-2xl bg-white border border-stone-100 shadow-[0_1px_12px_rgba(0,0,0,0.05)] p-4">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">{label}</p>
@@ -581,7 +584,7 @@ export default function HeroSection({
                 <div className="rounded-3xl bg-white shadow-[0_2px_20px_rgba(0,0,0,0.06)] border border-stone-100 overflow-hidden">
                     <div className="grid grid-cols-7 border-b border-stone-100">
                         {WEEK_ORDER.map(d => {
-                            const hasClass = allSchedules.some(s => s.dayOfWeek === d);
+                            const hasClass = schedules.some(s => s.dayOfWeek === d);
                             const isToday = d === nowDow;
                             const isSelected = d === selectedDay;
                             return (
@@ -611,11 +614,10 @@ export default function HeroSection({
                                 ? timeToMinutes(s.endTime) < nowMinutes : s.dayOfWeek < nowDow;
                             const colors = getTypeColor(s.type);
                             return (
-                                <div key={s.id} className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
-                                    isNow ? "border-emerald-200 bg-emerald-50 shadow-[0_2px_12px_rgba(5,150,105,0.08)]" :
+                                <div key={s.id} className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${isNow ? "border-emerald-200 bg-emerald-50 shadow-[0_2px_12px_rgba(5,150,105,0.08)]" :
                                     isPast ? "border-stone-100 bg-transparent opacity-40" :
-                                    "border-stone-100 bg-stone-50/60 hover:bg-stone-50"
-                                }`}>
+                                        "border-stone-100 bg-stone-50/60 hover:bg-stone-50"
+                                    }`}>
                                     <div className={`w-1 self-stretch rounded-full ${isNow ? "bg-emerald-400" : colors.dot}`} />
                                     <div className="flex-1 min-w-0">
                                         <p className={`text-sm font-bold truncate ${isPast && !isNow ? "text-stone-400" : "text-stone-700"}`}>{s.title}</p>
@@ -637,15 +639,13 @@ export default function HeroSection({
             {showNoteModal && (
                 <div
                     onClick={resetNoteModal}
-                    className={`fixed inset-0 z-50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 transition-all duration-300 ${
-                        noteModalVisible ? "bg-black/20 opacity-100" : "bg-black/0 opacity-0"
-                    }`}
+                    className={`fixed inset-0 z-50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 transition-all duration-300 ${noteModalVisible ? "bg-black/20 opacity-100" : "bg-black/0 opacity-0"
+                        }`}
                 >
                     <div
                         onClick={e => e.stopPropagation()}
-                        className={`w-full max-w-2xl overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.15)] transition-all duration-300 ${
-                            noteModalVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-95 opacity-0"
-                        }`}
+                        className={`w-full max-w-2xl overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.15)] transition-all duration-300 ${noteModalVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-95 opacity-0"
+                            }`}
                     >
                         <div className="h-1.5 w-full bg-linear-to-r from-blue-400 via-violet-400 to-pink-400" />
                         <div className="flex items-start justify-between px-6 pt-5 pb-5 border-b border-stone-100">
@@ -664,10 +664,9 @@ export default function HeroSection({
                                     value={noteText}
                                     onChange={e => { setNoteText(e.target.value); if (noteError) setNoteError(false); }}
                                     placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
-                                    className={`w-full min-h-36 bg-stone-50 text-stone-800 text-sm leading-relaxed rounded-2xl border px-4 py-3.5 outline-none resize-none transition-all placeholder:text-stone-300 ${
-                                        noteError ? "border-rose-300 focus:border-rose-400 bg-rose-50/50" :
+                                    className={`w-full min-h-36 bg-stone-50 text-stone-800 text-sm leading-relaxed rounded-2xl border px-4 py-3.5 outline-none resize-none transition-all placeholder:text-stone-300 ${noteError ? "border-rose-300 focus:border-rose-400 bg-rose-50/50" :
                                         "border-stone-200 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-                                    }`}
+                                        }`}
                                     autoFocus
                                 />
                                 <p className="text-[11px] text-stone-300 mt-1.5 text-right font-mono">{noteText.length}/1000</p>

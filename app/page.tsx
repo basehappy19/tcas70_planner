@@ -1,4 +1,6 @@
-// page.tsx
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import prisma from "@/lib/prisma";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
@@ -44,16 +46,18 @@ export default async function Page() {
         getActiveStudyLog(),
     ]);
 
+    // ── คิดทั้งหมดบน server ──
     let initialCurrentSchedule = null;
 
-    if (initialStatus === "STUDYING" && activeLog?.schedule) {
+    if ((initialStatus === "STUDYING" || initialStatus === "PAUSED") && activeLog?.schedule) {
+        // มี session active → ยึด schedule ของ session นั้น
         initialCurrentSchedule = allSchedules.find(s => s.id === activeLog.schedule.id) ?? null;
     } else {
-        initialCurrentSchedule = allSchedules.find(
-            (s) =>
-                s.dayOfWeek === initialDow &&
-                timeToMinutes(s.startTime) - EARLY_START_MINUTES <= initialMinutes &&
-                timeToMinutes(s.endTime) >= initialMinutes
+        // IDLE → หาจากเวลาปัจจุบัน + early window
+        initialCurrentSchedule = allSchedules.find(s =>
+            s.dayOfWeek === initialDow &&
+            timeToMinutes(s.startTime) - EARLY_START_MINUTES <= initialMinutes &&
+            timeToMinutes(s.endTime) >= initialMinutes
         ) ?? null;
     }
 
