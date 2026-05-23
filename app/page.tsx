@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+import { unstable_noStore as noStore } from "next/cache";
 
 import prisma from "@/lib/prisma";
 import dayjs from "dayjs";
@@ -31,6 +32,7 @@ async function getActiveStudyLog() {
 }
 
 export default async function Page() {
+    noStore();
     const bkkTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" });
     const now = dayjs(bkkTime);
 

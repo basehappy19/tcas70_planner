@@ -1,6 +1,7 @@
 'use server'
 
 import prisma from "@/lib/prisma";
+import { unstable_noStore as noStore } from "next/cache";
 import { StudyActionType } from "../generated/prisma/enums";
 
 function getThaiNow() {
@@ -10,6 +11,7 @@ function getThaiNow() {
 const getStartOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
 async function getActiveSession() {
+    noStore();
     const now = getThaiNow();
     return await prisma.studyLog.findFirst({
         where: {
@@ -20,14 +22,14 @@ async function getActiveSession() {
     });
 }
 
-// ฟังก์ชันใหม่: ดึงสถานะปัจจุบันของ Session
 export async function getCurrentSessionState(): Promise<"IDLE" | "STUDYING" | "PAUSED"> {
+    noStore();
     try {
         const activeSession = await getActiveSession();
         if (!activeSession) return "IDLE";
 
         const latestAction = await prisma.studyActionLog.findFirst({
-            where: { 
+            where: {
                 studyLogId: activeSession.id,
                 action: { in: ["PAUSE", "RESUME", "START_ON_TIME", "START_LATE"] }
             },
@@ -35,7 +37,7 @@ export async function getCurrentSessionState(): Promise<"IDLE" | "STUDYING" | "P
         });
 
         if (latestAction?.action === "PAUSE") return "PAUSED";
-        
+
         return "STUDYING";
     } catch (e) {
         console.error("Error fetching current state:", e);
@@ -53,7 +55,7 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
 
         const now = getThaiNow();
         const [startHour, startMinute] = schedule.startTime.split(":").map(Number);
-        
+
         const scheduledTime = new Date(
             now.getFullYear(), now.getMonth(), now.getDate(),
             startHour, startMinute, 0
@@ -89,9 +91,9 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
             });
         }
 
-        return { 
-            success: true, 
-            delayMinutes, 
+        return {
+            success: true,
+            delayMinutes,
         };
     } catch (error) {
         console.error(error);
@@ -100,7 +102,7 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
 }
 
 export async function addActionLogToDB(
-    action: StudyActionType, 
+    action: StudyActionType,
     note?: string,
     images?: { url: string; caption?: string }[]
 ) {
@@ -121,7 +123,7 @@ export async function addActionLogToDB(
                 } : undefined,
             },
         });
-        
+
         return { success: true };
     } catch (e) {
         console.error("Error in addActionLogToDB:", e);
@@ -146,6 +148,7 @@ export async function finishStudySession() {
 }
 
 export async function getLatestSchedules() {
+    noStore();
     try {
         const schedules = await prisma.schedule.findMany({
             orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
