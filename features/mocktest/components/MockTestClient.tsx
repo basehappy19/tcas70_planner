@@ -500,7 +500,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                         {score && subject && (
                                             <>
                                                 <p className={`text-xs font-bold mt-2 ${pctColor(scorePct)}`}>{scorePct.toFixed(1)}%</p>
-                                                <ScoreBar score={parseFloat(score)} fullScore={subject.fullScore} />
+                                                <ScoreBar score={parseFloat(score)} fullScore={subject.fullScore || 100} />
                                             </>
                                         )}
                                     </div>
@@ -592,7 +592,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                                 </div>
                                             </div>
 
-                                            <ScoreBar score={item.score} fullScore={item.subject.fullScore} />
+                                            <ScoreBar score={item.score} fullScore={item.subject.fullScore || 100} />
 
                                             {item.actions.length > 0 && (
                                                 <button onClick={() => setExpandedHistory(expanded ? null : item.id)} className="mt-3 text-xs text-emerald-600 hover:text-emerald-500 transition-colors cursor-pointer font-semibold">
@@ -613,7 +613,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                                                         <span className="text-[10px] text-stone-400 font-mono">{formatTime12(act.time)}</span>
                                                                     </div>
                                                                     {act.note && <p className="text-xs text-stone-500 mt-1 leading-relaxed">{act.note}</p>}
-                                                                    {act.images.length > 0 && (
+                                                                    {act.images && act.images.length > 0 && (
                                                                         <div className="flex gap-2 mt-2 flex-wrap">
                                                                             {act.images.map(img => (
                                                                                 <div key={img.id} className="flex flex-col gap-1">
