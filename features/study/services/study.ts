@@ -3,20 +3,15 @@
 import prisma from "@/lib/prisma";
 import { unstable_noStore as noStore } from "next/cache";
 import { StudyActionType } from "@/generated/prisma/enums";
-
-function getThaiNow() {
-    return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
-}
-
-const getStartOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+import dayjs from "@/lib/dayjs";
 
 async function getActiveSession() {
     noStore();
-    const now = getThaiNow();
+    const now = dayjs();
     return await prisma.studyLog.findFirst({
         where: {
             status: "STUDYING",
-            date: { gte: getStartOfDay(now) },
+            date: { gte: now.startOf('day').toDate() },
         },
         orderBy: { id: "desc" },
     });
@@ -36,9 +31,7 @@ export async function getCurrentSessionState(): Promise<"IDLE" | "STUDYING" | "P
             orderBy: { id: "desc" }
         });
 
-        if (latestAction?.action === "PAUSE") return "PAUSED";
-
-        return "STUDYING";
+        return latestAction?.action === "PAUSE" ? "PAUSED" : "STUDYING";
     } catch (e) {
         console.error("Error fetching current state:", e);
         return "IDLE";
@@ -47,21 +40,14 @@ export async function getCurrentSessionState(): Promise<"IDLE" | "STUDYING" | "P
 
 export async function createStudySession({ scheduleId }: { scheduleId: number }) {
     try {
-        const schedule = await prisma.schedule.findUnique({
-            where: { id: scheduleId },
-        });
-
+        const schedule = await prisma.schedule.findUnique({ where: { id: scheduleId } });
         if (!schedule) return { success: false, message: "ไม่พบตารางเรียน" };
 
-        const now = getThaiNow();
+        const now = dayjs();
         const [startHour, startMinute] = schedule.startTime.split(":").map(Number);
+        const scheduledTime = now.clone().hour(startHour).minute(startMinute).second(0).millisecond(0);
 
-        const scheduledTime = new Date(
-            now.getFullYear(), now.getMonth(), now.getDate(),
-            startHour, startMinute, 0
-        );
-
-        const diffMs = now.getTime() - scheduledTime.getTime();
+        const diffMs = now.diff(scheduledTime);
         const delayMinutes = Math.max(0, Math.floor(diffMs / 60000));
 
         const newSession = await prisma.studyLog.create({
@@ -69,32 +55,20 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
                 scheduleId: schedule.id,
                 delayMinutes: delayMinutes,
                 status: "STUDYING",
-                actualStartAt: now,
-                date: getStartOfDay(now),
+                actualStartAt: now.toDate(),
+                date: now.startOf('day').toDate(),
             },
         });
 
-        if (delayMinutes > 0) {
-            await prisma.studyActionLog.create({
-                data: {
-                    studyLogId: newSession.id,
-                    action: "START_LATE",
-                    note: `เข้าสาย ${delayMinutes} นาที`,
-                }
-            });
-        } else {
-            await prisma.studyActionLog.create({
-                data: {
-                    studyLogId: newSession.id,
-                    action: "START_ON_TIME",
-                }
-            });
-        }
+        await prisma.studyActionLog.create({
+            data: {
+                studyLogId: newSession.id,
+                action: delayMinutes > 0 ? "START_LATE" : "START_ON_TIME",
+                note: delayMinutes > 0 ? `เข้าสาย ${delayMinutes} นาที` : undefined,
+            }
+        });
 
-        return {
-            success: true,
-            delayMinutes,
-        };
+        return { success: true, delayMinutes };
     } catch (error) {
         console.error(error);
         return { success: false, message: "เกิดข้อผิดพลาดบนเซิร์ฟเวอร์" };

@@ -1,20 +1,12 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import dayjs from "dayjs";
-import customParseFormat from "dayjs/plugin/customParseFormat";
-import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
-import isBetween from "dayjs/plugin/isBetween";
+import dayjs from "@/lib/dayjs";
+import { formatTime12, formatDateThai, formatDuration, getGoogleDriveImageUrl } from "@/utils/format";
 import { addActionLogToDB, createStudySession, finishStudySession, getLatestSchedules } from "@/features/study/services/study";
 import { uploadImageToDrive } from "@/features/drive/services/drive";
-import buddhistEra from 'dayjs/plugin/buddhistEra';
-import 'dayjs/locale/th';
-
-dayjs.extend(buddhistEra);
-dayjs.locale('th');
-dayjs.extend(customParseFormat);
-dayjs.extend(isSameOrAfter);
-dayjs.extend(isBetween);
+import Image from "next/image";
+import { LocalImage, Status } from "@/types";
 
 type Schedule = {
     id: number;
@@ -46,14 +38,7 @@ type NoteImageData = {
 const DAY_NAMES_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const DAY_FULL_TH = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
-
-// ── เพิ่ม buffer: กี่นาทีก่อนเวลาจริงที่ให้กดเริ่มได้ ──
 const EARLY_START_MINUTES = 5;
-
-const formatTo12Hour = (time24: string) => {
-    if (!time24) return "";
-    return dayjs(time24, "HH:mm").format("h:mm A");
-};
 
 const timeToMinutes = (time: string) => {
     const [h, m] = time.split(":").map(Number);
@@ -67,8 +52,6 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; dot: string; borde
     'อื่น ๆ': { bg: "bg-orange-50", text: "text-orange-600", dot: "bg-orange-400", border: "border-orange-200" },
     'DEFAULT': { bg: "bg-stone-100", text: "text-stone-500", dot: "bg-stone-400", border: "border-stone-200" },
 };
-
-const getTypeColor = (type: string) => TYPE_COLORS[type] ?? TYPE_COLORS.DEFAULT;
 
 const getSecondsRemaining = (endTime: string): number => {
     const now = dayjs();
@@ -86,22 +69,8 @@ const formatCountdown = (totalSeconds: number) => {
     return { h, m, s, isOver };
 };
 
-/* ── Radial countdown ring ── */
-function CountdownRing({
-    secondsRemaining,
-    totalSeconds,
-    isOver,
-    isPaused,
-}: {
-    secondsRemaining: number;
-    totalSeconds: number;
-    isOver: boolean;
-    isPaused: boolean;
-}) {
-    const size = 64;
-    const stroke = 5;
-    const r = (size - stroke) / 2;
-    const circ = 2 * Math.PI * r;
+function CountdownRing({ secondsRemaining, totalSeconds, isOver, isPaused }: { secondsRemaining: number; totalSeconds: number; isOver: boolean; isPaused: boolean; }) {
+    const size = 64, stroke = 5, r = (size - stroke) / 2, circ = 2 * Math.PI * r;
     const pct = totalSeconds > 0 ? Math.max(0, Math.min(1, secondsRemaining / totalSeconds)) : 0;
     const dash = pct * circ;
     const color = isOver ? "#f43f5e" : isPaused ? "#fb923c" : "#10b981";
@@ -109,28 +78,13 @@ function CountdownRing({
     return (
         <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
             <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
-            <circle
-                cx={size / 2} cy={size / 2} r={r}
-                fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
-                strokeDasharray={`${dash} ${circ}`}
-                style={{ transition: "stroke-dasharray 0.8s linear" }}
-                suppressHydrationWarning
-            />
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${dash} ${circ}`} style={{ transition: "stroke-dasharray 0.8s linear" }} suppressHydrationWarning />
         </svg>
     );
 }
 
-export default function HeroSection({
-    allSchedules,
-    initialTime,
-    initialDow,
-    initialMinutes,
-    initialCurrentScheduleId,
-    initialCanEnd,
-    initialStatus,
-}: Props) {
+export default function HeroSection({ allSchedules, initialTime, initialDow, initialMinutes, initialCurrentScheduleId, initialCanEnd, initialStatus }: Props) {
     const router = useRouter();
-
     const [currentTime, setCurrentTime] = useState("");
     const [currentDate, setCurrentDate] = useState("");
     const [nowDow, setNowDow] = useState<number>(initialDow);
@@ -138,12 +92,10 @@ export default function HeroSection({
     const [status, setStatus] = useState<"IDLE" | "STUDYING" | "PAUSED">(initialStatus);
     const [isSaving, setIsSaving] = useState(false);
     const [canEndSession, setCanEndSession] = useState(initialCanEnd);
-
     const [secondsRemaining, setSecondsRemaining] = useState<number>(() => {
         const sched = allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null;
         return sched ? getSecondsRemaining(sched.endTime) : 0;
     });
-
     const [showNoteModal, setShowNoteModal] = useState(false);
     const [noteModalVisible, setNoteModalVisible] = useState(false);
     const [noteText, setNoteText] = useState("");
@@ -157,98 +109,62 @@ export default function HeroSection({
     useEffect(() => {
         const poll = async () => {
             const res = await getLatestSchedules();
-            if (res.success && res.schedules.length > 0) {
-                setSchedules(res.schedules);
-            }
+            if (res.success && res.schedules.length > 0) setSchedules(res.schedules);
         };
-
         poll();
         const interval = setInterval(poll, 30_000);
         return () => clearInterval(interval);
     }, []);
 
     const getCurrentSchedule = useCallback((dow: number, mins: number, earlyAllowed = false) => {
-        return schedules.find(s =>
-            s.dayOfWeek === dow &&
-            (earlyAllowed
-                ? timeToMinutes(s.startTime) - EARLY_START_MINUTES <= mins
-                : timeToMinutes(s.startTime) <= mins
-            ) &&
-            timeToMinutes(s.endTime) >= mins
-        ) ?? null;
+        return schedules.find(s => s.dayOfWeek === dow && (earlyAllowed ? timeToMinutes(s.startTime) - EARLY_START_MINUTES <= mins : timeToMinutes(s.startTime) <= mins) && timeToMinutes(s.endTime) >= mins) ?? null;
     }, [schedules]);
 
     const getPrevSchedule = useCallback((dow: number, mins: number) => {
-        const todayPrev = schedules
-            .filter(s => s.dayOfWeek === dow && timeToMinutes(s.endTime) < mins)
-            .sort((a, b) => timeToMinutes(b.endTime) - timeToMinutes(a.endTime))[0];
+        const todayPrev = schedules.filter(s => s.dayOfWeek === dow && timeToMinutes(s.endTime) < mins).sort((a, b) => timeToMinutes(b.endTime) - timeToMinutes(a.endTime))[0];
         if (todayPrev) return todayPrev;
         for (let i = 1; i <= 7; i++) {
             const d = ((dow - i) + 7) % 7;
-            const last = schedules
-                .filter(s => s.dayOfWeek === d)
-                .sort((a, b) => timeToMinutes(b.endTime) - timeToMinutes(a.endTime))[0];
+            const last = schedules.filter(s => s.dayOfWeek === d).sort((a, b) => timeToMinutes(b.endTime) - timeToMinutes(a.endTime))[0];
             if (last) return last;
         }
         return null;
     }, [schedules]);
 
     const getNextSchedule = useCallback((dow: number, mins: number): ScheduleWithTarget | null => {
-        const todayNext = schedules
-            .filter(s => s.dayOfWeek === dow && timeToMinutes(s.startTime) > mins)
-            .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))[0];
+        const todayNext = schedules.filter(s => s.dayOfWeek === dow && timeToMinutes(s.startTime) > mins).sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))[0];
         if (todayNext) return { ...todayNext, _targetDate: dayjs() };
-
         for (let i = 1; i <= 7; i++) {
             const d = (dow + i) % 7;
-            const first = schedules
-                .filter(s => s.dayOfWeek === d)
-                .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))[0];
+            const first = schedules.filter(s => s.dayOfWeek === d).sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))[0];
             if (first) return { ...first, _targetDate: dayjs().add(i, "day") };
         }
         return null;
     }, [schedules]);
 
-    const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(() =>
-        allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null
-    );
-
-    // ── canStartSession: ถ้า IDLE และอยู่ใน window [-5min, endTime] ──
-    const canStartSession = currentSchedule
-        ? nowMinutes >= timeToMinutes(currentSchedule.startTime) - EARLY_START_MINUTES
-        : false;
+    const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(() => allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null);
 
     useEffect(() => {
         const tick = () => {
             const now = dayjs();
             setCurrentTime(now.format("h:mm:ss A"));
             setCurrentDate(now.format("D MMMM BBBB"));
-            const dow = now.day();
-            const mins = timeToMinutes(now.format("HH:mm"));
-            setNowDow(dow);
-            setNowMinutes(mins);
-
+            const dow = now.day(), mins = timeToMinutes(now.format("HH:mm"));
+            setNowDow(dow); setNowMinutes(mins);
             setCurrentSchedule(current => {
                 if (status !== "IDLE" && current) {
                     const secs = getSecondsRemaining(current.endTime);
-                    setSecondsRemaining(secs);
-                    setCanEndSession(secs <= 0);
+                    setSecondsRemaining(secs); setCanEndSession(secs <= 0);
                     return current;
                 }
-
                 const live = getCurrentSchedule(dow, mins, true);
                 if (live) {
                     const secs = getSecondsRemaining(live.endTime);
-                    setSecondsRemaining(secs);
-                    setCanEndSession(secs <= 0);
-                } else {
-                    setSecondsRemaining(0);
-                    setCanEndSession(false);
-                }
+                    setSecondsRemaining(secs); setCanEndSession(secs <= 0);
+                } else { setSecondsRemaining(0); setCanEndSession(false); }
                 return live;
             });
         };
-
         tick();
         const timer = setInterval(tick, 1000);
         return () => clearInterval(timer);
@@ -256,511 +172,160 @@ export default function HeroSection({
 
     const getTimeUntilNextSchedule = () => {
         if (!nextSchedule?._targetDate) return null;
-        const target = (nextSchedule._targetDate as dayjs.Dayjs)
-            .hour(Number(nextSchedule.startTime.split(":")[0]))
-            .minute(Number(nextSchedule.startTime.split(":")[1]))
-            .second(0)
-            .millisecond(0);
+        const target = (nextSchedule._targetDate as dayjs.Dayjs).hour(Number(nextSchedule.startTime.split(":")[0])).minute(Number(nextSchedule.startTime.split(":")[1])).second(0).millisecond(0);
         const diffSeconds = target.diff(dayjs(), "second");
-        if (diffSeconds <= 0) return "กำลังจะเริ่ม";
-        const hours = Math.floor(diffSeconds / 3600);
-        const minutes = Math.floor((diffSeconds % 3600) / 60);
-        const seconds = diffSeconds % 60;
-        if (hours > 0) return `อีก ${hours} ชม. ${minutes} น. ${seconds} วิ`;
-        if (minutes > 0) return `อีก ${minutes} น. ${seconds} วิ`;
-        return `อีก ${seconds} วิ`;
+        return diffSeconds <= 0 ? "กำลังจะเริ่ม" : `อีก ${formatDuration(diffSeconds)}`;
     };
 
     const getNextDayLabel = (schedule: ScheduleWithTarget): string => {
         if (!schedule._targetDate) return DAY_NAMES_TH[schedule.dayOfWeek] + " ";
-        const diffDays = (schedule._targetDate as dayjs.Dayjs)
-            .startOf("day")
-            .diff(dayjs().startOf("day"), "day");
-        if (diffDays === 0) return "";
-        if (diffDays === 1) return "พรุ่งนี้ ";
-        return DAY_FULL_TH[schedule.dayOfWeek] + " ";
+        const diffDays = (schedule._targetDate as dayjs.Dayjs).startOf("day").diff(dayjs().startOf("day"), "day");
+        return diffDays === 0 ? "" : diffDays === 1 ? "พรุ่งนี้ " : DAY_FULL_TH[schedule.dayOfWeek] + " ";
     };
 
-    const prevSchedule = getPrevSchedule(nowDow, nowMinutes);
-    const nextSchedule = getNextSchedule(nowDow, nowMinutes);
-    const nextScheduleCountdown = getTimeUntilNextSchedule();
-    const daySchedules = schedules
-        .filter(s => s.dayOfWeek === selectedDay)
-        .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+    const prevSchedule = getPrevSchedule(nowDow, nowMinutes), nextSchedule = getNextSchedule(nowDow, nowMinutes), nextScheduleCountdown = getTimeUntilNextSchedule();
+    const daySchedules = schedules.filter(s => s.dayOfWeek === selectedDay).sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+    const canStartSession = currentSchedule ? nowMinutes >= timeToMinutes(currentSchedule.startTime) - EARLY_START_MINUTES : false;
 
     const handleStartStudy = async () => {
         if (!currentSchedule?.id) return;
         const res = await createStudySession({ scheduleId: currentSchedule.id });
-        if (res.success) {
-            setStatus("STUDYING");
-            router.refresh();
-        }
+        if (res.success) { setStatus("STUDYING"); router.refresh(); }
     };
 
     const handleEndSession = async () => {
         setIsSaving(true);
-        if (status === "IDLE" && currentSchedule?.id) {
-            await createStudySession({ scheduleId: currentSchedule.id });
-        }
+        if (status === "IDLE" && currentSchedule?.id) await createStudySession({ scheduleId: currentSchedule.id });
         await addActionLogToDB("END_SESSION");
         const res = await finishStudySession();
         setIsSaving(false);
         if (res.success || status === "IDLE") {
-            // ── Fix: reset state ทันทีบน client อย่ารอ router.refresh() ──
-            setStatus("IDLE");
-            setSecondsRemaining(0);
-            setCanEndSession(false);
-
-            const now = dayjs();
-            const dow = now.day();
-            const mins = timeToMinutes(now.format("HH:mm"));
-            setNowDow(dow);
-            setNowMinutes(mins);
-
-            // recalculate: หลังจบคาบ ถ้าคาบถัดไปเริ่มได้แล้ว (±0s หรือ early window) ให้ขึ้นเลย
-            const nextLive = getCurrentSchedule(dow, mins, true);
-            setCurrentSchedule(nextLive);
-
+            setStatus("IDLE"); setSecondsRemaining(0); setCanEndSession(false);
+            const now = dayjs(), dow = now.day(), mins = timeToMinutes(now.format("HH:mm"));
+            setNowDow(dow); setNowMinutes(mins);
+            setCurrentSchedule(getCurrentSchedule(dow, mins, true));
             router.refresh();
         }
     };
 
-    const todayLabel = (dow: number) => {
-        if (dow === nowDow) return "วันนี้";
-        if (dow === (nowDow + 1) % 7) return "พรุ่งนี้";
-        return DAY_FULL_TH[dow];
-    };
-
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
-        if (files.length > 0) {
-            setImages(prev => [...prev, ...files.map(file => ({
-                file,
-                preview: URL.createObjectURL(file),
-                caption: ""
-            }))]);
-        }
+        if (files.length > 0) setImages(prev => [...prev, ...files.map(file => ({ file, preview: URL.createObjectURL(file), caption: "" }))]);
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
-    const handleRemoveImage = (i: number) => {
-        setImages(prev => {
-            const updated = [...prev];
-            URL.revokeObjectURL(updated[i].preview);
-            updated.splice(i, 1);
-            return updated;
-        });
-    };
+    const handleRemoveImage = (i: number) => setImages(prev => { const updated = [...prev]; URL.revokeObjectURL(updated[i].preview); updated.splice(i, 1); return updated; });
+    const resetNoteModal = () => { setNoteModalVisible(false); setTimeout(() => { setNoteText(""); setNoteError(false); images.forEach(img => URL.revokeObjectURL(img.preview)); setImages([]); setShowNoteModal(false); }, 250); };
 
-    const handleCaptionChange = (i: number, caption: string) => {
-        setImages(prev => { const u = [...prev]; u[i].caption = caption; return u; });
-    };
+    const countdown = formatCountdown(secondsRemaining), isActiveSession = status === "STUDYING" || status === "PAUSED";
+    const totalSessionSeconds = currentSchedule ? (timeToMinutes(currentSchedule.endTime) - timeToMinutes(currentSchedule.startTime)) * 60 : 0;
+    const isInEarlyWindow = currentSchedule ? nowMinutes < timeToMinutes(currentSchedule.startTime) : false;
 
-    const resetNoteModal = () => {
-        setNoteModalVisible(false);
-        setTimeout(() => {
-            setNoteText(""); setNoteError(false);
-            images.forEach(img => URL.revokeObjectURL(img.preview));
-            setImages([]); setShowNoteModal(false);
-        }, 250);
-    };
-
-    const countdown = formatCountdown(secondsRemaining);
-    const isActiveSession = status === "STUDYING" || status === "PAUSED";
-    const totalSessionSeconds = currentSchedule
-        ? (timeToMinutes(currentSchedule.endTime) - timeToMinutes(currentSchedule.startTime)) * 60
-        : 0;
-
-    // ── isInEarlyWindow: คาบนี้ยังไม่ถึงเวลาจริง แต่อยู่ใน early window ──
-    const isInEarlyWindow = currentSchedule
-        ? nowMinutes < timeToMinutes(currentSchedule.startTime)
-        : false;
-
-    const statusConfig = {
-        IDLE: { label: "ว่าง", dot: "bg-stone-400", pill: "bg-stone-100 text-stone-500 border-stone-200" },
-        STUDYING: { label: "กำลังเรียน", dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-        PAUSED: { label: "พักเบรก", dot: "bg-orange-400", pill: "bg-orange-50 text-orange-600 border-orange-200" },
-    };
-    const sc = statusConfig[status];
+    const sc = { IDLE: { label: "ว่าง", dot: "bg-stone-400", pill: "bg-stone-100 text-stone-500 border-stone-200" }, STUDYING: { label: "กำลังเรียน", dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200" }, PAUSED: { label: "พักเบรก", dot: "bg-orange-400", pill: "bg-orange-50 text-orange-600 border-orange-200" } }[status];
 
     return (
         <div className="min-h-screen bg-[#FAFAF7] text-stone-800 px-4 py-8 font-sans">
             <div className="max-w-6xl mx-auto space-y-4">
-
-                {/* Header */}
                 <div className="flex items-start justify-between">
                     <div>
                         <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-stone-400 mb-1">TCAS 70 · Planner</p>
-                        <p
-                            className="text-3xl md:text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none"
-                            suppressHydrationWarning
-                        >
-                            {currentTime || initialTime}
-                        </p>
-                        <p className="text-sm text-stone-400 mt-2 font-medium">
-                            {currentDate ? `${DAY_FULL_TH[nowDow]}ที่ ${currentDate}` : ""}
-                        </p>
+                        <p className="text-3xl md:text-5xl font-mono font-black text-stone-800 tabular-nums tracking-tight leading-none" suppressHydrationWarning>{currentTime || initialTime}</p>
+                        <p className="text-sm text-stone-400 mt-2 font-medium">{currentDate ? `${DAY_FULL_TH[nowDow]}ที่ ${currentDate}` : ""}</p>
                     </div>
-                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mt-1 ${sc.pill}`}>
-                        <span className={`w-2 h-2 rounded-full ${sc.dot} ${status !== "IDLE" ? "animate-pulse" : ""}`} />
-                        {sc.label}
-                    </div>
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mt-1 ${sc.pill}`}><span className={`w-2 h-2 rounded-full ${sc.dot} ${status !== "IDLE" ? "animate-pulse" : ""}`} />{sc.label}</div>
                 </div>
 
-                {/* Current Schedule Card */}
                 {currentSchedule ? (
                     <div className="rounded-3xl bg-white shadow-[0_2px_24px_rgba(0,0,0,0.07)] border border-stone-100 overflow-hidden">
-                        <div className={`h-1.5 w-full ${status === "STUDYING" ? "bg-linear-to-r from-emerald-400 to-teal-300" :
-                            status === "PAUSED" ? "bg-linear-to-r from-orange-400 to-amber-300" :
-                                isInEarlyWindow ? "bg-linear-to-r from-amber-300 to-yellow-200" :
-                                    "bg-linear-to-r from-stone-200 to-stone-100"
-                            }`} />
+                        <div className={`h-1.5 w-full ${status === "STUDYING" ? "bg-linear-to-r from-emerald-400 to-teal-300" : status === "PAUSED" ? "bg-linear-to-r from-orange-400 to-amber-300" : isInEarlyWindow ? "bg-linear-to-r from-amber-300 to-yellow-200" : "bg-linear-to-r from-stone-200 to-stone-100"}`} />
                         <div className="p-6">
-                            <div className="flex items-start justify-between mb-1">
-                                <span className={`text-[10px] font-black tracking-[0.18em] uppercase ${isInEarlyWindow ? "text-amber-500" : "text-emerald-600"}`}>
-                                    {isInEarlyWindow ? "เตรียมตัว" : "ชั่วโมงนี้"}
-                                </span>
-                                <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${getTypeColor(currentSchedule.type).bg} ${getTypeColor(currentSchedule.type).text} ${getTypeColor(currentSchedule.type).border}`}>
-                                    {currentSchedule.type}
-                                </span>
-                            </div>
+                            <div className="flex items-start justify-between mb-1"><span className={`text-[10px] font-black tracking-[0.18em] uppercase ${isInEarlyWindow ? "text-amber-500" : "text-emerald-600"}`}>{isInEarlyWindow ? "เตรียมตัว" : "ชั่วโมงนี้"}</span><span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${(TYPE_COLORS[currentSchedule.type] || TYPE_COLORS.DEFAULT).bg} ${(TYPE_COLORS[currentSchedule.type] || TYPE_COLORS.DEFAULT).text} ${(TYPE_COLORS[currentSchedule.type] || TYPE_COLORS.DEFAULT).border}`}>{currentSchedule.type}</span></div>
                             <h2 className="text-2xl font-black text-stone-800 mt-1 mb-4 leading-tight">{currentSchedule.title}</h2>
-                            <div className="flex items-center gap-2 mb-4">
-                                <span className="bg-stone-50 border border-stone-200 text-stone-600 text-sm font-mono px-3 py-1.5 rounded-xl">
-                                    {formatTo12Hour(currentSchedule.startTime)}
-                                </span>
-                                <span className="text-stone-300 font-light">—</span>
-                                <span className="bg-stone-50 border border-stone-200 text-stone-600 text-sm font-mono px-3 py-1.5 rounded-xl">
-                                    {formatTo12Hour(currentSchedule.endTime)}
-                                </span>
-                                {/* แสดง badge ถ้าอยู่ใน early window */}
-                                {isInEarlyWindow && status === "IDLE" && (
-                                    <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-50 text-amber-600 border border-amber-200">
-                                        เริ่มได้ก่อนกำหนด
-                                    </span>
-                                )}
-                            </div>
+                            <div className="flex items-center gap-2 mb-4"><span className="bg-stone-50 border border-stone-200 text-stone-600 text-sm font-mono px-3 py-1.5 rounded-xl">{formatTime12(currentSchedule.startTime)}</span><span className="text-stone-300 font-light">—</span><span className="bg-stone-50 border border-stone-200 text-stone-600 text-sm font-mono px-3 py-1.5 rounded-xl">{formatTime12(currentSchedule.endTime)}</span>{isInEarlyWindow && status === "IDLE" && <span className="text-xs px-2.5 py-1 rounded-full font-semibold bg-amber-50 text-amber-600 border border-amber-200">เริ่มได้ก่อนกำหนด</span>}</div>
 
-                            {/* Countdown block */}
                             {isActiveSession && (
-                                <div className={`mb-5 rounded-2xl px-5 py-4 border flex items-center justify-between gap-4 ${countdown.isOver ? "bg-rose-50 border-rose-200" :
-                                    status === "PAUSED" ? "bg-orange-50 border-orange-200" :
-                                        "bg-emerald-50 border-emerald-200"
-                                    }`}>
+                                <div className={`mb-5 rounded-2xl px-5 py-4 border flex items-center justify-between gap-4 ${countdown.isOver ? "bg-rose-50 border-rose-200" : status === "PAUSED" ? "bg-orange-50 border-orange-200" : "bg-emerald-50 border-emerald-200"}`}>
                                     <div>
-                                        <p className={`text-[10px] font-black tracking-widest uppercase mb-1.5 ${countdown.isOver ? "text-rose-400" :
-                                            status === "PAUSED" ? "text-orange-400" : "text-emerald-500"
-                                            }`}>
-                                            {countdown.isOver ? "เลยเวลาแล้ว" : status === "PAUSED" ? "หยุดชั่วคราว" : "เวลาที่เหลือ"}
-                                        </p>
-                                        <p suppressHydrationWarning className={`text-3xl font-mono font-black tabular-nums tracking-tight leading-none ${countdown.isOver ? "text-rose-600" :
-                                            status === "PAUSED" ? "text-orange-500" : "text-emerald-700"
-                                            }`}>
-                                            {countdown.h !== "00" && (
-                                                <>{countdown.h}<span className="text-base font-bold opacity-50 mx-0.5">ชม</span></>
-                                            )}
-                                            {countdown.m}<span className="text-base font-bold opacity-50 mx-0.5">น</span>
-                                            {countdown.s}<span className="text-base font-bold opacity-50 ml-0.5">วิ</span>
-                                        </p>
+                                        <p className={`text-[10px] font-black tracking-widest uppercase mb-1.5 ${countdown.isOver ? "text-rose-400" : status === "PAUSED" ? "text-orange-400" : "text-emerald-500"}`}>{countdown.isOver ? "เลยเวลาแล้ว" : status === "PAUSED" ? "หยุดชั่วคราว" : "เวลาที่เหลือ"}</p>
+                                        <p suppressHydrationWarning className={`text-3xl font-mono font-black tabular-nums tracking-tight leading-none ${countdown.isOver ? "text-rose-600" : status === "PAUSED" ? "text-orange-500" : "text-emerald-700"}`}>{countdown.h !== "00" && <>{countdown.h}<span className="text-base font-bold opacity-50 mx-0.5">ชม</span></>}{countdown.m}<span className="text-base font-bold opacity-50 mx-0.5">น</span>{countdown.s}<span className="text-base font-bold opacity-50 ml-0.5">วิ</span></p>
                                     </div>
-                                    <div className="shrink-0">
-                                        <CountdownRing
-                                            secondsRemaining={secondsRemaining}
-                                            totalSeconds={totalSessionSeconds}
-                                            isOver={countdown.isOver}
-                                            isPaused={status === "PAUSED"}
-                                        />
-                                    </div>
+                                    <div className="shrink-0"><CountdownRing secondsRemaining={secondsRemaining} totalSeconds={totalSessionSeconds} isOver={countdown.isOver} isPaused={status === "PAUSED"} /></div>
                                 </div>
                             )}
 
-                            {/* ── ปุ่มเริ่มติว: แสดงเมื่อ IDLE + ติว + canStartSession ── */}
                             {status === "IDLE" && currentSchedule.type === "ติว" && canStartSession ? (
-                                <button
-                                    onClick={handleStartStudy}
-                                    className="cursor-pointer w-full bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-white font-black py-3.5 rounded-2xl text-base transition-all shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.4)]"
-                                >
-                                    {isInEarlyWindow
-                                        ? `เริ่มก่อนกำหนด (${timeToMinutes(currentSchedule.startTime) - nowMinutes} น.) →`
-                                        : "เริ่มติวเลย →"
-                                    }
-                                </button>
+                                <button onClick={handleStartStudy} className="cursor-pointer w-full bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-white font-black py-3.5 rounded-2xl text-base transition-all shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.4)]">{isInEarlyWindow ? `เริ่มก่อนกำหนด (${timeToMinutes(currentSchedule.startTime) - nowMinutes} น.) →` : "เริ่มติวเลย →"}</button>
                             ) : (
                                 <div className="space-y-3">
-                                    <div className={`flex justify-between items-center px-4 py-3 rounded-2xl border text-sm ${status === "STUDYING" ? "border-emerald-200 bg-emerald-50" :
-                                        status === "PAUSED" ? "border-orange-200 bg-orange-50" :
-                                            "border-stone-200 bg-stone-50"
-                                        }`}>
+                                    <div className={`flex justify-between items-center px-4 py-3 rounded-2xl border text-sm ${status === "STUDYING" ? "border-emerald-200 bg-emerald-50" : status === "PAUSED" ? "border-orange-200 bg-orange-50" : "border-stone-200 bg-stone-50"}`}>
                                         <div className="flex items-center gap-2.5">
-                                            {status !== "IDLE" && (
-                                                <span className="relative flex h-2.5 w-2.5">
-                                                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-50 ${status === "STUDYING" ? "bg-emerald-400" : "bg-orange-400"}`} />
-                                                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${status === "STUDYING" ? "bg-emerald-500" : "bg-orange-400"}`} />
-                                                </span>
-                                            )}
-                                            <span className={`font-semibold text-sm ${status === "IDLE" ? "text-stone-500" :
-                                                status === "STUDYING" ? "text-emerald-700" : "text-orange-600"
-                                                }`}>
-                                                {status === "IDLE" ? `คาบ${currentSchedule.type}` :
-                                                    status === "STUDYING" ? "กำลังเรียนอยู่" : "พักเบรก"}
-                                            </span>
+                                            {status !== "IDLE" && <span className="relative flex h-2.5 w-2.5"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-50 ${status === "STUDYING" ? "bg-emerald-400" : "bg-orange-400"}`} /><span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${status === "STUDYING" ? "bg-emerald-500" : "bg-orange-400"}`} /></span>}
+                                            <span className={`font-semibold text-sm ${status === "IDLE" ? "text-stone-500" : status === "STUDYING" ? "text-emerald-700" : "text-orange-600"}`}>{status === "IDLE" ? `คาบ${currentSchedule.type}` : status === "STUDYING" ? "กำลังเรียนอยู่" : "พักเบรก"}</span>
                                         </div>
                                         <div className="flex gap-2">
-                                            <button
-                                                onClick={() => { setShowNoteModal(true); requestAnimationFrame(() => setNoteModalVisible(true)); }}
-                                                className="cursor-pointer px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors border border-blue-200"
-                                            >จดโน้ต</button>
-                                            {status !== "IDLE" && (
-                                                <button
-                                                    onClick={() => {
-                                                        const next = status === "STUDYING" ? "PAUSED" : "STUDYING";
-                                                        setStatus(next);
-                                                        addActionLogToDB(next === "STUDYING" ? "RESUME" : "PAUSE");
-                                                    }}
-                                                    className="cursor-pointer px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-100 text-stone-600 hover:bg-stone-200 transition-colors border border-stone-200"
-                                                >
-                                                    {status === "STUDYING" ? "พัก" : "เรียนต่อ"}
-                                                </button>
-                                            )}
+                                            <button onClick={() => { setShowNoteModal(true); requestAnimationFrame(() => setNoteModalVisible(true)); }} className="cursor-pointer px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors border border-blue-200">จดโน้ต</button>
+                                            {status !== "IDLE" && <button onClick={() => { const next = status === "STUDYING" ? "PAUSED" : "STUDYING"; setStatus(next); addActionLogToDB(next === "STUDYING" ? "RESUME" : "PAUSE"); }} className="cursor-pointer px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-100 text-stone-600 hover:bg-stone-200 transition-colors border border-stone-200">{status === "STUDYING" ? "พัก" : "เรียนต่อ"}</button>}
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={handleEndSession}
-                                        disabled={!canEndSession || isSaving}
-                                        className={`w-full py-3 rounded-2xl text-sm font-bold transition-all border ${canEndSession && !isSaving
-                                            ? "cursor-pointer border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white hover:border-rose-500 hover:shadow-[0_4px_16px_rgba(244,63,94,0.25)]"
-                                            : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-300"
-                                            }`}
-                                    >
-                                        {isSaving ? "กำลังบันทึก..." :
-                                            canEndSession ? (status === "IDLE" ? "จบคาบ" : "จบชั่วโมงการเรียน") :
-                                                `ยังไม่ถึงเวลาจบ · ${formatTo12Hour(currentSchedule.endTime)}`}
-                                    </button>
+                                    <button onClick={handleEndSession} disabled={!canEndSession || isSaving} className={`w-full py-3 rounded-2xl text-sm font-bold transition-all border ${canEndSession && !isSaving ? "cursor-pointer border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white hover:border-rose-500 hover:shadow-[0_4px_16px_rgba(244,63,94,0.25)]" : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-300"}`}>{isSaving ? "กำลังบันทึก..." : canEndSession ? (status === "IDLE" ? "จบคาบ" : "จบชั่วโมงการเรียน") : `ยังไม่ถึงเวลาจบ · ${formatTime12(currentSchedule.endTime)}`}</button>
                                 </div>
                             )}
                         </div>
                     </div>
                 ) : (
-                    <div className="rounded-3xl bg-white shadow-[0_2px_24px_rgba(0,0,0,0.06)] border border-stone-100 p-10 text-center">
-                        <div className="text-5xl mb-3">☕</div>
-                        <h2 className="text-xl font-black text-stone-700 mb-1">เวลาพักผ่อน</h2>
-                        <p className="text-sm text-stone-400">ขณะนี้ไม่มีตารางติว</p>
-                    </div>
+                    <div className="rounded-3xl bg-white shadow-[0_2px_24px_rgba(0,0,0,0.06)] border border-stone-100 p-10 text-center"><div className="text-5xl mb-3">☕</div><h2 className="text-xl font-black text-stone-700 mb-1">เวลาพักผ่อน</h2><p className="text-sm text-stone-400">ขณะนี้ไม่มีตารางติว</p></div>
                 )}
 
-                {/* Prev / Next strip */}
                 <div className="grid grid-cols-2 gap-3">
-                    {[
-                        { label: "◂ ก่อนหน้า", schedule: prevSchedule as ScheduleWithTarget | null, isNext: false },
-                        { label: "ถัดไป ▸", schedule: nextSchedule, isNext: true },
-                    ].map(({ label, schedule, isNext }) => (
-                        <div key={label} className="rounded-2xl bg-white border border-stone-100 shadow-[0_1px_12px_rgba(0,0,0,0.05)] p-4">
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">{label}</p>
-                            {schedule ? (
-                                <>
-                                    <p className="text-sm font-bold text-stone-700 leading-tight">{schedule.title}</p>
-                                    <p className="text-xs text-stone-400 mt-1 font-mono">
-                                        {isNext
-                                            ? getNextDayLabel(schedule as ScheduleWithTarget)
-                                            : `${DAY_NAMES_TH[schedule.dayOfWeek]} `}
-                                        {formatTo12Hour(schedule.startTime)}–{formatTo12Hour(schedule.endTime)}
-                                    </p>
-                                    {isNext && nextScheduleCountdown && (
-                                        <p suppressHydrationWarning className="text-[11px] text-emerald-600 font-semibold mt-1">{nextScheduleCountdown}</p>
-                                    )}
-                                    <span className={`mt-2.5 inline-block text-xs px-2 py-0.5 rounded-full font-semibold border ${getTypeColor(schedule.type).bg} ${getTypeColor(schedule.type).text} ${getTypeColor(schedule.type).border}`}>
-                                        {schedule.type}
-                                    </span>
-                                </>
-                            ) : (
-                                <p className="text-xs text-stone-300">ไม่มีข้อมูล</p>
-                            )}
+                    {[ { label: "◂ ก่อนหน้า", schedule: prevSchedule as ScheduleWithTarget | null, isNext: false }, { label: "ถัดไป ▸", schedule: nextSchedule, isNext: true } ].map(({ label, schedule, isNext }) => (
+                        <div key={label} className="rounded-2xl bg-white border border-stone-100 shadow-[0_1px_12px_rgba(0,0,0,0.05)] p-4"><p className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">{label}</p>
+                            {schedule ? (<><p className="text-sm font-bold text-stone-700 leading-tight">{schedule.title}</p><p className="text-xs text-stone-400 mt-1 font-mono">{isNext ? getNextDayLabel(schedule) : `${DAY_NAMES_TH[schedule.dayOfWeek]} `}{formatTime12(schedule.startTime)}–{formatTime12(schedule.endTime)}</p>{isNext && nextScheduleCountdown && <p suppressHydrationWarning className="text-[11px] text-emerald-600 font-semibold mt-1">{nextScheduleCountdown}</p>}<span className={`mt-2.5 inline-block text-xs px-2 py-0.5 rounded-full font-semibold border ${(TYPE_COLORS[schedule.type] || TYPE_COLORS.DEFAULT).bg} ${(TYPE_COLORS[schedule.type] || TYPE_COLORS.DEFAULT).text} ${(TYPE_COLORS[schedule.type] || TYPE_COLORS.DEFAULT).border}`}>{schedule.type}</span></>) : <p className="text-xs text-stone-300">ไม่มีข้อมูล</p>}
                         </div>
                     ))}
                 </div>
 
-                {/* Weekly calendar */}
                 <div className="rounded-3xl bg-white shadow-[0_2px_20px_rgba(0,0,0,0.06)] border border-stone-100 overflow-hidden">
                     <div className="grid grid-cols-7 border-b border-stone-100">
-                        {WEEK_ORDER.map(d => {
-                            const hasClass = schedules.some(s => s.dayOfWeek === d);
-                            const isToday = d === nowDow;
-                            const isSelected = d === selectedDay;
-                            return (
-                                <button key={d} onClick={() => setSelectedDay(d)}
-                                    className={`cursor-pointer py-3.5 text-center transition-all relative ${isSelected ? "bg-stone-50" : "hover:bg-stone-50/70"}`}
-                                >
-                                    <p className={`text-xs font-bold ${isToday ? "text-emerald-600" : isSelected ? "text-stone-700" : "text-stone-400"}`}>
-                                        {DAY_NAMES_TH[d]}
-                                    </p>
-                                    {hasClass && <div className={`mx-auto mt-1.5 w-1.5 h-1.5 rounded-full ${isToday ? "bg-emerald-400" : "bg-stone-300"}`} />}
-                                    {isSelected && <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-stone-800 rounded-full" />}
-                                </button>
-                            );
-                        })}
+                        {WEEK_ORDER.map(d => (
+                            <button key={d} onClick={() => setSelectedDay(d)} className={`cursor-pointer py-3.5 text-center transition-all relative ${selectedDay === d ? "bg-stone-50" : "hover:bg-stone-50/70"}`}>
+                                <p className={`text-xs font-bold ${d === nowDow ? "text-emerald-600" : selectedDay === d ? "text-stone-700" : "text-stone-400"}`}>{DAY_NAMES_TH[d]}</p>
+                                {schedules.some(s => s.dayOfWeek === d) && <div className={`mx-auto mt-1.5 w-1.5 h-1.5 rounded-full ${d === nowDow ? "bg-emerald-400" : "bg-stone-300"}`} />}
+                                {selectedDay === d && <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-stone-800 rounded-full" />}
+                            </button>
+                        ))}
                     </div>
-                    <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                        <p className="text-sm font-black text-stone-700">{todayLabel(selectedDay)}</p>
-                        <span className="text-xs text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full font-medium">{daySchedules.length} คาบ</span>
-                    </div>
+                    <div className="px-4 pt-4 pb-2 flex items-center justify-between"><p className="text-sm font-black text-stone-700">{selectedDay === nowDow ? "วันนี้" : selectedDay === (nowDow + 1) % 7 ? "พรุ่งนี้" : DAY_FULL_TH[selectedDay]}</p><span className="text-xs text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full font-medium">{daySchedules.length} คาบ</span></div>
                     <div className="px-4 pb-4 space-y-2">
-                        {daySchedules.length === 0 ? (
-                            <div className="text-center py-8"><p className="text-sm text-stone-300 font-medium">ไม่มีตารางเรียน</p></div>
-                        ) : daySchedules.map(s => {
-                            const isNow = s.dayOfWeek === nowDow &&
-                                timeToMinutes(s.startTime) <= nowMinutes && timeToMinutes(s.endTime) >= nowMinutes;
-                            const isPast = s.dayOfWeek === nowDow
-                                ? timeToMinutes(s.endTime) < nowMinutes : s.dayOfWeek < nowDow;
-                            const colors = getTypeColor(s.type);
+                        {daySchedules.length === 0 ? <div className="text-center py-8"><p className="text-sm text-stone-300 font-medium">ไม่มีตารางเรียน</p></div> : daySchedules.map(s => {
+                            const isNow = s.dayOfWeek === nowDow && timeToMinutes(s.startTime) <= nowMinutes && timeToMinutes(s.endTime) >= nowMinutes, isPast = s.dayOfWeek === nowDow ? timeToMinutes(s.endTime) < nowMinutes : s.dayOfWeek < nowDow, colors = TYPE_COLORS[s.type] || TYPE_COLORS.DEFAULT;
                             return (
-                                <div key={s.id} className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${isNow ? "border-emerald-200 bg-emerald-50 shadow-[0_2px_12px_rgba(5,150,105,0.08)]" :
-                                    isPast ? "border-stone-100 bg-transparent opacity-40" :
-                                        "border-stone-100 bg-stone-50/60 hover:bg-stone-50"
-                                    }`}>
+                                <div key={s.id} className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${isNow ? "border-emerald-200 bg-emerald-50 shadow-[0_2px_12px_rgba(5,150,105,0.08)]" : isPast ? "border-stone-100 bg-transparent opacity-40" : "border-stone-100 bg-stone-50/60 hover:bg-stone-50"}`}>
                                     <div className={`w-1 self-stretch rounded-full ${isNow ? "bg-emerald-400" : colors.dot}`} />
-                                    <div className="flex-1 min-w-0">
-                                        <p className={`text-sm font-bold truncate ${isPast && !isNow ? "text-stone-400" : "text-stone-700"}`}>{s.title}</p>
-                                        <p className="text-xs text-stone-400 font-mono mt-0.5">{formatTo12Hour(s.startTime)} – {formatTo12Hour(s.endTime)}</p>
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${colors.bg} ${colors.text} ${colors.border}`}>{s.type}</span>
-                                        {isNow && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold shadow-sm">ตอนนี้</span>}
-                                    </div>
+                                    <div className="flex-1 min-w-0"><p className={`text-sm font-bold truncate ${isPast && !isNow ? "text-stone-400" : "text-stone-700"}`}>{s.title}</p><p className="text-xs text-stone-400 font-mono mt-0.5">{formatTime12(s.startTime)} – {formatTime12(s.endTime)}</p></div>
+                                    <div className="flex items-center gap-2 shrink-0"><span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${colors.bg} ${colors.text} ${colors.border}`}>{s.type}</span>{isNow && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500 text-white font-bold shadow-sm">ตอนนี้</span>}</div>
                                 </div>
                             );
                         })}
                     </div>
                 </div>
-
             </div>
 
-            {/* Note Modal */}
             {showNoteModal && (
-                <div
-                    onClick={resetNoteModal}
-                    className={`fixed inset-0 z-50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 transition-all duration-300 ${noteModalVisible ? "bg-black/20 opacity-100" : "bg-black/0 opacity-0"
-                        }`}
-                >
-                    <div
-                        onClick={e => e.stopPropagation()}
-                        className={`w-full max-w-2xl overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.15)] transition-all duration-300 ${noteModalVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-95 opacity-0"
-                            }`}
-                    >
+                <div onClick={resetNoteModal} className={`fixed inset-0 z-50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 transition-all duration-300 ${noteModalVisible ? "bg-black/20 opacity-100" : "bg-black/0 opacity-0"}`}>
+                    <div onClick={e => e.stopPropagation()} className={`w-full max-w-2xl overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-[0_24px_80px_rgba(0,0,0,0.15)] transition-all duration-300 ${noteModalVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-95 opacity-0"}`}>
                         <div className="h-1.5 w-full bg-linear-to-r from-blue-400 via-violet-400 to-pink-400" />
                         <div className="flex items-start justify-between px-6 pt-5 pb-5 border-b border-stone-100">
-                            <div>
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-base">📝</div>
-                                    <h3 className="text-lg font-black text-stone-800">จดบันทึกระหว่างเรียน</h3>
-                                </div>
-                                <p className="text-sm text-stone-400 mt-2 ml-10.5">บันทึกสูตร จุดที่ยังไม่เข้าใจ หรือสิ่งที่ต้องทบทวน</p>
-                            </div>
+                            <div><div className="flex items-center gap-2.5"><div className="w-8 h-8 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-base">📝</div><h3 className="text-lg font-black text-stone-800">จดบันทึกระหว่างเรียน</h3></div><p className="text-sm text-stone-400 mt-2 ml-10.5">บันทึกสูตร จุดที่ยังไม่เข้าใจ หรือสิ่งที่ต้องทบทวน</p></div>
                             <button onClick={resetNoteModal} className="cursor-pointer shrink-0 w-9 h-9 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-400 hover:text-stone-600 transition-colors flex items-center justify-center text-sm font-bold">✕</button>
                         </div>
                         <div className="px-6 py-5 space-y-4">
-                            <div>
-                                <textarea
-                                    value={noteText}
-                                    onChange={e => { setNoteText(e.target.value); if (noteError) setNoteError(false); }}
-                                    placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..."
-                                    className={`w-full min-h-36 bg-stone-50 text-stone-800 text-sm leading-relaxed rounded-2xl border px-4 py-3.5 outline-none resize-none transition-all placeholder:text-stone-300 ${noteError ? "border-rose-300 focus:border-rose-400 bg-rose-50/50" :
-                                        "border-stone-200 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-                                        }`}
-                                    autoFocus
-                                />
-                                <p className="text-[11px] text-stone-300 mt-1.5 text-right font-mono">{noteText.length}/1000</p>
-                            </div>
-                            <div>
-                                <input
-                                    type="file"
-                                    accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
-                                    multiple
-                                    className="hidden"
-                                    ref={fileInputRef}
-                                    onChange={handleImageChange}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-500 transition-colors"
-                                >
-                                    <span>📷</span>
-                                    <span>แนบรูปภาพ</span>
-                                    <span className="text-[11px] text-stone-400 font-normal">(PNG, JPG, GIF, WebP)</span>
-                                    {images.length > 0 && (
-                                        <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-bold">{images.length}</span>
-                                    )}
-                                </button>
-                            </div>
-                            {images.length > 0 && (
-                                <div className="space-y-2.5 max-h-60 overflow-y-auto">
-                                    {images.map((img, index) => (
-                                        <div key={index} className="flex gap-3.5 rounded-2xl border border-stone-100 bg-stone-50 p-3">
-                                            <div className="relative shrink-0">
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img
-                                                    src={img.preview}
-                                                    alt={`Preview ${index}`}
-                                                    className="w-20 h-20 rounded-xl object-cover border border-stone-200"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemoveImage(index)}
-                                                    className="cursor-pointer absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-400 text-white text-[10px] font-bold flex items-center justify-center shadow transition-colors"
-                                                >✕</button>
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">คำอธิบาย</p>
-                                                <textarea
-                                                    value={img.caption}
-                                                    onChange={e => handleCaptionChange(index, e.target.value)}
-                                                    placeholder="เช่น สรุปสูตรหน้า 12..."
-                                                    rows={3}
-                                                    className="w-full bg-transparent text-sm text-stone-700 placeholder:text-stone-300 outline-none resize-none leading-relaxed"
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            {noteError && (
-                                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-                                    <p className="text-sm text-rose-500 font-semibold">⚠️ กรุณากรอกข้อความหรือแนบรูปภาพก่อนบันทึก</p>
-                                </div>
-                            )}
+                            <textarea value={noteText} onChange={e => { setNoteText(e.target.value); if (noteError) setNoteError(false); }} placeholder="สูตรที่ลืม, จุดที่ยังไม่เข้าใจ, สิ่งที่ต้องทบทวน..." className={`w-full min-h-36 bg-stone-50 text-stone-800 text-sm leading-relaxed rounded-2xl border px-4 py-3.5 outline-none resize-none transition-all placeholder:text-stone-300 ${noteError ? "border-rose-300 focus:border-rose-400 bg-rose-50/50" : "border-stone-200 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"}`} autoFocus />
+                            <p className="text-[11px] text-stone-300 mt-1.5 text-right font-mono">{noteText.length}/1000</p>
+                            <div><input type="file" accept="image/*" multiple className="hidden" ref={fileInputRef} onChange={handleImageChange} /><button type="button" onClick={() => fileInputRef.current?.click()} className="cursor-pointer inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 px-4 py-2.5 text-sm font-semibold text-stone-500 transition-colors"><span>📷</span><span>แนบรูปภาพ</span>{images.length > 0 && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600 text-xs font-bold">{images.length}</span>}</button></div>
+                            {images.length > 0 && <div className="space-y-2.5 max-h-60 overflow-y-auto">{images.map((img, index) => (<div key={index} className="flex gap-3.5 rounded-2xl border border-stone-100 bg-stone-50 p-3"><div className="relative shrink-0"><img src={img.preview} alt="" className="w-20 h-20 rounded-xl object-cover border border-stone-200" /><button type="button" onClick={() => handleRemoveImage(index)} className="cursor-pointer absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-400 text-white text-[10px] font-bold flex items-center justify-center shadow transition-colors">✕</button></div><div className="flex-1 min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">คำอธิบาย</p><textarea value={img.caption} onChange={e => { const u = [...images]; u[index].caption = e.target.value; setImages(u); }} placeholder="เช่น สรุปสูตรหน้า 12..." rows={3} className="w-full bg-transparent text-sm text-stone-700 placeholder:text-stone-300 outline-none resize-none leading-relaxed" /></div></div>))}</div>}
+                            {noteError && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3"><p className="text-sm text-rose-500 font-semibold">⚠️ กรุณากรอกข้อความหรือแนบรูปภาพก่อนบันทึก</p></div>}
                         </div>
-                        <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-1">
-                            <button type="button" onClick={resetNoteModal} disabled={isUploading}
-                                className="cursor-pointer h-12 rounded-2xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-sm font-bold text-stone-500 transition-all disabled:opacity-50"
-                            >ยกเลิก</button>
-                            <button
-                                onClick={async () => {
-                                    if (!noteText.trim() && images.length === 0) { setNoteError(true); return; }
-                                    setIsUploading(true);
-                                    let uploadedImages: { url: string; caption: string }[] = [];
-                                    if (images.length > 0) {
-                                        const results = await Promise.all(images.map(async img => {
-                                            const formData = new FormData();
-                                            formData.append("file", img.file);
-                                            const res = await uploadImageToDrive(formData);
-                                            return res.success ? { url: res.url as string, caption: img.caption } : null;
-                                        }));
-                                        uploadedImages = results.filter((r): r is { url: string; caption: string } => r !== null);
-                                    }
-                                    if (status === "IDLE" && currentSchedule?.id) {
-                                        await createStudySession({ scheduleId: currentSchedule.id });
-                                        setStatus("STUDYING");
-                                    }
-                                    await addActionLogToDB("TAKE_NOTE", noteText, uploadedImages);
-                                    setIsUploading(false);
-                                    resetNoteModal();
-                                }}
-                                disabled={isUploading}
-                                className="cursor-pointer h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-black shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.35)] transition-all active:scale-[0.98] disabled:opacity-50"
-                            >
-                                {isUploading ? `กำลังอัปโหลด ${images.length} รูป...` : "บันทึก"}
-                            </button>
-                        </div>
+                        <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-1"><button type="button" onClick={resetNoteModal} disabled={isUploading} className="cursor-pointer h-12 rounded-2xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-sm font-bold text-stone-500 transition-all disabled:opacity-50">ยกเลิก</button><button onClick={async () => { if (!noteText.trim() && images.length === 0) { setNoteError(true); return; } setIsUploading(true); let uploadedImages: { url: string; caption: string }[] = []; if (images.length > 0) { const results = await Promise.all(images.map(async img => { const fd = new FormData(); fd.append("file", img.file); const res = await uploadImageToDrive(fd); return res.success ? { url: getGoogleDriveImageUrl(res.url), caption: img.caption } : null; })); uploadedImages = results.filter((r): r is { url: string; caption: string } => r !== null); } if (status === "IDLE" && currentSchedule?.id) { await createStudySession({ scheduleId: currentSchedule.id }); setStatus("STUDYING"); } await addActionLogToDB("TAKE_NOTE", noteText, uploadedImages); setIsUploading(false); resetNoteModal(); }} disabled={isUploading} className="cursor-pointer h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-black shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.35)] transition-all active:scale-[0.98] disabled:opacity-50">{isUploading ? `กำลังอัปโหลด ${images.length} รูป...` : "บันทึก"}</button></div>
                     </div>
                 </div>
             )}

@@ -1,8 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useCallback } from "react";
-import dayjs from "dayjs";
-import buddhistEra from 'dayjs/plugin/buddhistEra';
-import 'dayjs/locale/th';
+import dayjs from "@/lib/dayjs";
+import { formatTime12, formatDateThai, formatDurationDigital, formatDuration } from "@/utils/format";
 import Image from "next/image";
 import {
     startFreeStudySession,
@@ -13,9 +12,6 @@ import {
     endFreeStudy,
 } from "@/features/free-study/services/freeStudy";
 import { uploadImageToDrive } from "@/features/drive/services/drive";
-
-dayjs.extend(buddhistEra);
-dayjs.locale('th');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +32,7 @@ type NoteImageData = {
     caption: string;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const DAY_FULL_TH = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
 
@@ -46,23 +42,6 @@ const SUBJECT_PRESETS = [
     { label: "TGAT3", emoji: "🛺" },
     { label: "TPAT3", emoji: "⚙️" },
 ];
-
-function formatElapsed(seconds: number) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    if (h > 0) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-function formatElapsedReadable(seconds: number) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    if (h > 0) return `${h} ชม. ${m} น. ${s} วิ`;
-    if (m > 0) return `${m} น. ${s} วิ`;
-    return `${s} วิ`;
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -255,7 +234,7 @@ export default function FreeStudySection({ initialSession }: Props) {
                             {currentTime}
                         </p>
                         <p className="text-sm text-stone-400 mt-2 font-medium">
-                            {DAY_FULL_TH[nowDow]}ที่ {dayjs().format("D MMMM BBBB")}
+                            {DAY_FULL_TH[nowDow]}ที่ {formatDateThai(dayjs())}
                         </p>
                     </div>
 
@@ -364,7 +343,7 @@ export default function FreeStudySection({ initialSession }: Props) {
                                         {session.title}
                                     </h2>
                                     <p className="text-xs text-stone-400 font-mono mt-1">
-                                        เริ่ม {dayjs(session.startedAt).format("h:mm A")}
+                                        เริ่ม {formatTime12(session.startedAt)}
                                     </p>
                                 </div>
                                 <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${status === "IN_PROGRESS"
@@ -386,7 +365,7 @@ export default function FreeStudySection({ initialSession }: Props) {
                                 </p>
                                 <p className={`text-5xl font-mono font-black tabular-nums tracking-tight ${status === "IN_PROGRESS" ? "text-violet-700" : "text-orange-600"
                                     }`} suppressHydrationWarning>
-                                    {formatElapsed(elapsedSeconds)}
+                                    {formatDurationDigital(elapsedSeconds)}
                                 </p>
 
                                 {/* Pause/Resume indicator */}
@@ -449,9 +428,7 @@ export default function FreeStudySection({ initialSession }: Props) {
 
             </div>
 
-            {/* ══════════════════════════════════════════════════════════════ */}
             {/* ── End Confirm Modal ── */}
-            {/* ══════════════════════════════════════════════════════════════ */}
             {showEndConfirm && (
                 <div
                     onClick={() => !isEnding && setShowEndConfirm(false)}
@@ -470,7 +447,7 @@ export default function FreeStudySection({ initialSession }: Props) {
                             </p>
                             <p className="text-2xl font-mono font-black text-stone-700 tabular-nums my-3"
                                 suppressHydrationWarning>
-                                {formatElapsed(elapsedSeconds)}
+                                {formatDurationDigital(elapsedSeconds)}
                             </p>
                             <p className="text-xs text-stone-400 mb-5">จะบันทึกเวลาเรียนทั้งหมดนี้</p>
                             <div className="grid grid-cols-2 gap-3">
@@ -494,9 +471,7 @@ export default function FreeStudySection({ initialSession }: Props) {
                 </div>
             )}
 
-            {/* ══════════════════════════════════════════════════════════════ */}
             {/* ── Note Modal ── */}
-            {/* ══════════════════════════════════════════════════════════════ */}
             {showNoteModal && (
                 <div
                     onClick={resetNoteModal}
@@ -518,7 +493,7 @@ export default function FreeStudySection({ initialSession }: Props) {
                                     <h3 className="text-lg font-black text-stone-800">จดบันทึกระหว่างเรียน</h3>
                                 </div>
                                 <p className="text-sm text-stone-400 mt-2 ml-10.5">
-                                    {session?.title} · {formatElapsedReadable(elapsedSeconds)}
+                                    {session?.title} · {formatDuration(elapsedSeconds)}
                                 </p>
                             </div>
                             <button

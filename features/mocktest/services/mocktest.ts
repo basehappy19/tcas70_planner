@@ -3,6 +3,7 @@
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { MockTestActionType, MockTestStatus } from "@/generated/prisma/enums";
+import dayjs from "@/lib/dayjs";
 
 export type ActiveTestState = {
     id: number;
@@ -11,10 +12,6 @@ export type ActiveTestState = {
     timeLimitMinutes: number;
     timeSpentSeconds: number;
 } | null;
-
-function getThaiNow() {
-    return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
-}
 
 async function getActiveSession() {
     return await prisma.mockTest.findFirst({
@@ -33,9 +30,7 @@ async function updateTimeSpent(mockTestId: number) {
     });
 
     if (lastRunAction) {
-        const now = getThaiNow();
-        const elapsedSeconds = Math.floor((now.getTime() - lastRunAction.time.getTime()) / 1000);
-
+        const elapsedSeconds = dayjs().diff(dayjs(lastRunAction.time), "second");
         if (elapsedSeconds > 0) {
             await prisma.mockTest.update({
                 where: { id: mockTestId },
@@ -51,17 +46,18 @@ async function createSnapshot(
     note?: string,
     images?: { url: string; caption?: string }[]
 ) {
+    const now = dayjs().toDate();
     return prisma.mockTestActionLog.create({
         data: {
             mockTestId,
             action,
             note: note ?? null,
-            time: getThaiNow(),
+            time: now,
             images: images?.length ? {
                 create: images.map(img => ({
                     url: img.url,
                     caption: img.caption ?? null,
-                    createdAt: getThaiNow(),
+                    createdAt: now,
                 }))
             } : undefined,
         },
@@ -81,7 +77,7 @@ export async function getActiveTestState(): Promise<ActiveTestState> {
 }
 
 export async function startMockTest(data: { subjectId: number; timeLimitMinutes: number }) {
-    const now = getThaiNow();
+    const now = dayjs().toDate();
     const session = await prisma.mockTest.create({
         data: {
             subjectId: data.subjectId,
@@ -100,14 +96,12 @@ export async function togglePauseResumeMockTest(action: "PAUSE" | "RESUME") {
     const active = await getActiveSession();
     if (!active) return { success: false };
 
-    if (action === "PAUSE" && active.status === "RUNNING") {
-        await updateTimeSpent(active.id);
-    }
+    if (action === "PAUSE" && active.status === "RUNNING") await updateTimeSpent(active.id);
 
     const newStatus = action === "PAUSE" ? "PAUSED" : "RUNNING";
     const updated = await prisma.mockTest.update({
         where: { id: active.id },
-        data: { status: newStatus, updatedAt: getThaiNow() },
+        data: { status: newStatus, updatedAt: dayjs().toDate() },
     });
     await createSnapshot(updated.id, action);
     revalidatePath("/mocktest");
@@ -118,13 +112,11 @@ export async function enterScoringPhase() {
     const active = await getActiveSession();
     if (!active) return { success: false };
 
-    if (active.status === "RUNNING") {
-        await updateTimeSpent(active.id);
-    }
+    if (active.status === "RUNNING") await updateTimeSpent(active.id);
 
     const updated = await prisma.mockTest.update({
         where: { id: active.id },
-        data: { status: "SCORING", updatedAt: getThaiNow() },
+        data: { status: "SCORING", updatedAt: dayjs().toDate() },
     });
     await createSnapshot(updated.id, "SCORING");
     revalidatePath("/mocktest");
@@ -135,30 +127,19 @@ export async function cancelMockTest() {
     const active = await getActiveSession();
     if (active) {
         await prisma.$transaction([
-            prisma.mockTestImage.deleteMany({
-                where: { actionLog: { mockTestId: active.id } },
-            }),
-            prisma.mockTestActionLog.deleteMany({
-                where: { mockTestId: active.id },
-            }),
-            prisma.mockTest.delete({
-                where: { id: active.id },
-            }),
+            prisma.mockTestImage.deleteMany({ where: { actionLog: { mockTestId: active.id } } }),
+            prisma.mockTestActionLog.deleteMany({ where: { mockTestId: active.id } }),
+            prisma.mockTest.delete({ where: { id: active.id } }),
         ]);
     }
     revalidatePath("/mocktest");
     return { success: true };
 }
 
-export async function addMockTestNote(data: {
-    note?: string;
-    images?: { url: string; caption?: string }[];
-}) {
+export async function addMockTestNote(data: { note?: string; images?: { url: string; caption?: string }[] }) {
     const active = await getActiveSession();
     if (!active) return { success: false, message: "ไม่พบเซสชันสอบ" };
-    if (!data.note && (!data.images || data.images.length === 0)) {
-        return { success: false, message: "ไม่มีข้อมูลให้บันทึก" };
-    }
+    if (!data.note && (!data.images || data.images.length === 0)) return { success: false, message: "ไม่มีข้อมูลให้บันทึก" };
     await createSnapshot(active.id, "NOTE", data.note, data.images);
     revalidatePath("/mocktest");
     return { success: true };
@@ -174,15 +155,10 @@ export async function finishMockTest(formData: FormData) {
 
         await prisma.mockTest.update({
             where: { id: active.id },
-            data: {
-                status: "COMPLETED",
-                score,
-                updatedAt: getThaiNow(),
-            },
+            data: { status: "COMPLETED", score, updatedAt: dayjs().toDate() },
         });
 
         await createSnapshot(active.id, "FINISH", notes || undefined);
-
         revalidatePath("/mocktest");
         return { success: true };
     } catch (e) {
@@ -197,7 +173,7 @@ export async function backToRunning() {
 
     const updated = await prisma.mockTest.update({
         where: { id: active.id },
-        data: { status: "RUNNING", updatedAt: getThaiNow() },
+        data: { status: "RUNNING", updatedAt: dayjs().toDate() },
     });
 
     await createSnapshot(updated.id, "RESUME");
@@ -208,15 +184,9 @@ export async function backToRunning() {
 export async function deleteTestHistory(id: number) {
     try {
         await prisma.$transaction([
-            prisma.mockTestImage.deleteMany({
-                where: { actionLog: { mockTestId: id } },
-            }),
-            prisma.mockTestActionLog.deleteMany({
-                where: { mockTestId: id },
-            }),
-            prisma.mockTest.delete({
-                where: { id },
-            }),
+            prisma.mockTestImage.deleteMany({ where: { actionLog: { mockTestId: id } } }),
+            prisma.mockTestActionLog.deleteMany({ where: { mockTestId: id } }),
+            prisma.mockTest.delete({ where: { id } }),
         ]);
         revalidatePath("/mocktest");
         return { success: true };

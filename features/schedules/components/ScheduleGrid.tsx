@@ -1,18 +1,10 @@
 'use client'
 
 import { useState, useEffect } from "react";
-import dayjs from "dayjs";
-import customParseFormat from "dayjs/plugin/customParseFormat";
-import isBetween from "dayjs/plugin/isBetween";
-import buddhistEra from "dayjs/plugin/buddhistEra";
-import "dayjs/locale/th";
+import dayjs from "@/lib/dayjs";
+import { formatTime12, formatDateThai, getGoogleDriveImageUrl } from "@/utils/format";
 import { updateSchedule, getScheduleHistory } from "@/features/schedules/services/schedule";
 import Image from "next/image";
-
-dayjs.extend(customParseFormat);
-dayjs.extend(isBetween);
-dayjs.extend(buddhistEra);
-dayjs.locale("th");
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,12 +84,6 @@ function formatDuration(startedAt: Date, endedAt: Date | null) {
     const m = Math.floor((diffSec % 3600) / 60);
     if (h > 0) return `${h} ชม. ${m} น.`;
     return `${m} น.`;
-}
-
-function getGoogleDriveImageUrl(url: string) {
-    const match = url.match(/\/d\/(.*?)\//);
-    if (!match) return url;
-    return `https://drive.google.com/uc?export=view&id=${match[1]}`;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -185,7 +171,6 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
     const [formData, setFormData] = useState({ title: item.title, startTime: item.startTime, endTime: item.endTime });
     const [errors, setErrors] = useState({ title: false, startTime: false, endTime: false });
 
-    const fmt = (t: string) => t ? dayjs(t, "HH:mm").format("h:mm A") : "";
     const validateForm = () => {
         const newErrors = { title: !formData.title.trim(), startTime: !formData.startTime, endTime: !formData.endTime };
         setErrors(newErrors);
@@ -253,7 +238,7 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
     };
 
     const DAY_NAMES = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
-    const scheduleInfo = `วัน${DAY_NAMES[item.dayOfWeek]} • ${fmt(item.startTime)} - ${fmt(item.endTime)}`;
+    const scheduleInfo = `วัน${DAY_NAMES[item.dayOfWeek]} • ${formatTime12(item.startTime)} - ${formatTime12(item.endTime)}`;
 
     return (
         <>
@@ -271,7 +256,7 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                     </span>
                 )}
                 <p className="text-[10px] text-stone-400 font-mono mb-1.5 tabular-nums">
-                    {fmt(item.startTime)} – {fmt(item.endTime)}
+                    {formatTime12(item.startTime)} – {formatTime12(item.endTime)}
                 </p>
                 <div className="flex items-start gap-1.5 mb-3">
                     <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${typeColor.dot}`} />
@@ -352,10 +337,10 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
                                                     <p className="text-sm font-bold text-stone-800">
-                                                        {dayjs(log.date).format("D MMMM BBBB")}
+                                                        {formatDateThai(log.date)}
                                                     </p>
                                                     <p className="text-[11px] text-stone-400 mt-1 font-mono">
-                                                        เริ่ม {log.actualStartAt ? dayjs(log.actualStartAt).format("h:mm A") : "—"}
+                                                        เริ่ม {log.actualStartAt ? formatTime12(log.actualStartAt) : "—"}
                                                         {log.delayMinutes > 0 && (
                                                             <span className="text-rose-500 ml-2 font-semibold">+{log.delayMinutes} นาที</span>
                                                         )}
@@ -397,8 +382,8 @@ export default function ScheduleGrid({ item, isToday }: { item: ScheduleItem; is
                                                                     <div>
                                                                         <p className="text-sm font-bold text-stone-800">{fl.title}</p>
                                                                         <p className="text-[11px] font-mono text-stone-400 mt-0.5">
-                                                                            {dayjs(fl.startedAt).format("h:mm A")}
-                                                                            {fl.endedAt && ` – ${dayjs(fl.endedAt).format("h:mm A")}`}
+                                                                            {formatTime12(fl.startedAt)}
+                                                                            {fl.endedAt && ` – ${formatTime12(fl.endedAt)}`}
                                                                         </p>
                                                                     </div>
                                                                     {duration && (

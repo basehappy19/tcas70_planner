@@ -3,27 +3,20 @@ export const revalidate = 0;
 import { unstable_noStore as noStore } from "next/cache";
 
 import prisma from "@/lib/prisma";
-import dayjs from "dayjs";
-import customParseFormat from "dayjs/plugin/customParseFormat";
+import dayjs from "@/lib/dayjs";
 import HeroSection from "@/components/layout/HeroSection";
 import { getCurrentSessionState } from "@/features/study/services/study";
 
-dayjs.extend(customParseFormat);
+const EARLY_START_MINUTES = 5;
 
 const timeToMinutes = (time: string) => {
     const [h, m] = time.split(":").map(Number);
     return h * 60 + m;
 };
 
-const EARLY_START_MINUTES = 5;
-
-function getThaiNow() {
-    return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
-}
-
 async function getActiveStudyLog() {
-    const now = getThaiNow();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const now = dayjs();
+    const startOfDay = now.startOf('day').toDate();
     return prisma.studyLog.findFirst({
         where: { status: "STUDYING", date: { gte: startOfDay } },
         include: { schedule: true },
@@ -33,12 +26,7 @@ async function getActiveStudyLog() {
 
 export default async function Page() {
     noStore();
-    const bkkTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" });
-    const now = dayjs(bkkTime);
-
-    const initialServerTime = now.format("h:mm:ss A");
-    const initialDow = now.day();
-    const initialMinutes = timeToMinutes(now.format("HH:mm"));
+    const now = dayjs();
 
     const [allSchedules, initialStatus, activeLog] = await Promise.all([
         prisma.schedule.findMany({
@@ -48,14 +36,13 @@ export default async function Page() {
         getActiveStudyLog(),
     ]);
 
-    // ── คิดทั้งหมดบน server ──
+    const initialDow = now.day();
+    const initialMinutes = timeToMinutes(now.format("HH:mm"));
     let initialCurrentSchedule = null;
 
     if ((initialStatus === "STUDYING" || initialStatus === "PAUSED") && activeLog?.schedule) {
-        // มี session active → ยึด schedule ของ session นั้น
         initialCurrentSchedule = allSchedules.find(s => s.id === activeLog.schedule.id) ?? null;
     } else {
-        // IDLE → หาจากเวลาปัจจุบัน + early window
         initialCurrentSchedule = allSchedules.find(s =>
             s.dayOfWeek === initialDow &&
             timeToMinutes(s.startTime) - EARLY_START_MINUTES <= initialMinutes &&
@@ -71,7 +58,7 @@ export default async function Page() {
         <main>
             <HeroSection
                 allSchedules={allSchedules}
-                initialTime={initialServerTime}
+                initialTime={now.format("h:mm:ss A")}
                 initialDow={initialDow}
                 initialMinutes={initialMinutes}
                 initialCurrentScheduleId={initialCurrentSchedule?.id ?? null}
