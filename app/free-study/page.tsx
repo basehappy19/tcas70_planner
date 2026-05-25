@@ -1,5 +1,5 @@
-import { getFreeStudyState } from "../actions/freeStudy";
-import FreeStudySection from "./FreeStudySection";
+import { getFreeStudyState } from "@/features/free-study/services/freeStudy";
+import FreeStudySection from "@/features/free-study/components/FreeStudySection";
 
 export default async function FreeStudyPage() {
   const initialSession = await getFreeStudyState();

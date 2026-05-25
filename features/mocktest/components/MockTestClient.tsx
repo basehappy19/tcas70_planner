@@ -15,8 +15,8 @@ import {
     addMockTestNote,
     backToRunning,
     deleteTestHistory,
-} from "../actions/mocktest";
-import { uploadImageToDrive } from "../actions/drive";
+} from "@/features/mocktest/services/mocktest";
+import { uploadImageToDrive } from "@/features/drive/services/drive";
 import Image from "next/image";
 
 dayjs.extend(buddhistEra);

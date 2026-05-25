@@ -2,8 +2,8 @@
 export const dynamic = "force-dynamic";
 
 import prisma from "@/lib/prisma";
-import ScheduleGrid from "../components/ScheduleGrid";
-import CurrentDateTime from "./CurrentDateTime";
+import ScheduleGrid from "@/features/schedules/components/ScheduleGrid";
+import CurrentDateTime from "@/features/schedules/components/CurrentDateTime";
 
 export default async function SchedulePage() {
     const allSchedules = await prisma.schedule.findMany({

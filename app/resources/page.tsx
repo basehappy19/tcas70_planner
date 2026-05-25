@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import ResourceClient from "./ResourceClient";
+import ResourceClient from "@/features/resources/components/ResourceClient";
 
 export default async function ResourcesPage() {
     const subjects = await prisma.subject.findMany({

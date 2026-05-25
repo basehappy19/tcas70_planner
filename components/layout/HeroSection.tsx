@@ -5,8 +5,8 @@ import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 import isBetween from "dayjs/plugin/isBetween";
-import { addActionLogToDB, createStudySession, finishStudySession, getLatestSchedules } from "@/app/actions/study";
-import { uploadImageToDrive } from "@/app/actions/drive";
+import { addActionLogToDB, createStudySession, finishStudySession, getLatestSchedules } from "@/features/study/services/study";
+import { uploadImageToDrive } from "@/features/drive/services/drive";
 import buddhistEra from 'dayjs/plugin/buddhistEra';
 import 'dayjs/locale/th';
 

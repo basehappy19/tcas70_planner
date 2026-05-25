@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { addResource, deleteResource } from '../actions/resource'
+import { addResource, deleteResource } from '@/features/resources/services/resource'
 import Image from 'next/image'
 
 interface Subject {

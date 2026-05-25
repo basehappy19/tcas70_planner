@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from "../app/generated/prisma/client";
+import { PrismaClient, Prisma } from "../generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import "dotenv/config";
 
@@ -161,7 +161,7 @@ const scheduleData: Prisma.ScheduleCreateInput[] = [
         dayOfWeek: 0,
         startTime: "19:00",
         endTime: "21:00",
-        title: "Weekly Progress: เช็กภาพรวมใน Notion ว่าเราเก็บไปได้กี่ %",
+        title: "Weekly Progress: เช็กภาพรวมว่าเราเก็บไปได้กี่ %",
         type: "CONTENT",
     },
 ];

@@ -2,7 +2,7 @@
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { MockTestActionType, MockTestStatus } from "../generated/prisma/enums";
+import { MockTestActionType, MockTestStatus } from "@/generated/prisma/enums";
 
 export type ActiveTestState = {
     id: number;

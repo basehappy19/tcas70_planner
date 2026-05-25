@@ -6,7 +6,7 @@ import customParseFormat from "dayjs/plugin/customParseFormat";
 import isBetween from "dayjs/plugin/isBetween";
 import buddhistEra from "dayjs/plugin/buddhistEra";
 import "dayjs/locale/th";
-import { updateSchedule, getScheduleHistory } from "../actions/schedule";
+import { updateSchedule, getScheduleHistory } from "@/features/schedules/services/schedule";
 import Image from "next/image";
 
 dayjs.extend(customParseFormat);

@@ -5,8 +5,8 @@ import { unstable_noStore as noStore } from "next/cache";
 import prisma from "@/lib/prisma";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
-import HeroSection from "./components/HeroSection";
-import { getCurrentSessionState } from "@/app/actions/study";
+import HeroSection from "@/components/layout/HeroSection";
+import { getCurrentSessionState } from "@/features/study/services/study";
 
 dayjs.extend(customParseFormat);
 

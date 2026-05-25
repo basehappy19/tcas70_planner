@@ -11,8 +11,8 @@ import {
     resumeFreeStudy,
     addFreeStudyNote,
     endFreeStudy,
-} from "@/app/actions/freeStudy";
-import { uploadImageToDrive } from "@/app/actions/drive";
+} from "@/features/free-study/services/freeStudy";
+import { uploadImageToDrive } from "@/features/drive/services/drive";
 
 dayjs.extend(buddhistEra);
 dayjs.locale('th');
