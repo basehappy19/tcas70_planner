@@ -2,7 +2,7 @@
 
 import prisma from "@/lib/prisma";
 import { unstable_noStore as noStore } from "next/cache";
-import { StudyActionType } from "@/generated/prisma/enums";
+import { StudyActionType } from "@prisma/client";
 import dayjs from "@/lib/dayjs";
 
 async function getActiveSession() {

@@ -1,7 +1,7 @@
 "use server";
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { ResourceType } from "@/generated/prisma/enums";
+import { ResourceType } from "@prisma/client";
 
 export async function addResource(formData: FormData) {
     try {
