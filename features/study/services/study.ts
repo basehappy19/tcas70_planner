@@ -48,12 +48,23 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
         const scheduledTime = now.clone().hour(startHour).minute(startMinute).second(0).millisecond(0);
 
         const diffMs = now.diff(scheduledTime);
-        const delayMinutes = Math.max(0, Math.floor(diffMs / 60000));
+        const delayMinutes = Math.floor(diffMs / 60000);
+        
+        let action: StudyActionType = "START_ON_TIME";
+        let note: string | undefined = undefined;
+
+        if (delayMinutes > 0) {
+            action = "START_LATE";
+            note = `เข้าสาย ${delayMinutes} นาที`;
+        } else if (delayMinutes < 0) {
+            action = "START_EARLY";
+            note = `เข้าเรียนก่อนเวลา ${Math.abs(delayMinutes)} นาที`;
+        }
 
         const newSession = await prisma.studyLog.create({
             data: {
                 scheduleId: schedule.id,
-                delayMinutes: delayMinutes,
+                delayMinutes: Math.max(0, delayMinutes),
                 status: "STUDYING",
                 actualStartAt: now.toDate(),
                 date: now.startOf('day').toDate(),
@@ -63,8 +74,8 @@ export async function createStudySession({ scheduleId }: { scheduleId: number })
         await prisma.studyActionLog.create({
             data: {
                 studyLogId: newSession.id,
-                action: delayMinutes > 0 ? "START_LATE" : "START_ON_TIME",
-                note: delayMinutes > 0 ? `เข้าสาย ${delayMinutes} นาที` : undefined,
+                action: action,
+                note: note,
             }
         });
 

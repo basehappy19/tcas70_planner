@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import dayjs from "@/lib/dayjs";
 import { formatTime12, formatDateThai, formatDuration, getGoogleDriveImageUrl } from "@/utils/format";
-import { addActionLogToDB, createStudySession, finishStudySession, getLatestSchedules } from "@/features/study/services/study";
+import { addActionLogToDB, createStudySession, finishStudySession, getLatestSchedules, getCurrentSessionState } from "@/features/study/services/study";
 import { uploadImageToDrive } from "@/features/drive/services/drive";
 import Image from "next/image";
 import { LocalImage, Status } from "@/types";
@@ -107,14 +107,32 @@ export default function HeroSection({ allSchedules, initialTime, initialDow, ini
     const [schedules, setSchedules] = useState(allSchedules);
 
     useEffect(() => {
-        const poll = async () => {
+        const pollSchedules = async () => {
             const res = await getLatestSchedules();
             if (res.success && res.schedules.length > 0) setSchedules(res.schedules);
         };
-        poll();
-        const interval = setInterval(poll, 30_000);
-        return () => clearInterval(interval);
-    }, []);
+        const pollStatus = async () => {
+            try {
+                const serverStatus = await getCurrentSessionState();
+                if (serverStatus !== status) {
+                    setStatus(serverStatus);
+                }
+            } catch (e) {
+                console.error("Failed to poll session state:", e);
+            }
+        };
+
+        pollSchedules();
+        pollStatus();
+
+        const scheduleInterval = setInterval(pollSchedules, 30_000);
+        const statusInterval = setInterval(pollStatus, 5000);
+
+        return () => {
+            clearInterval(scheduleInterval);
+            clearInterval(statusInterval);
+        };
+    }, [status]);
 
     const getCurrentSchedule = useCallback((dow: number, mins: number, earlyAllowed = false) => {
         return schedules.find(s => s.dayOfWeek === dow && (earlyAllowed ? timeToMinutes(s.startTime) - EARLY_START_MINUTES <= mins : timeToMinutes(s.startTime) <= mins) && timeToMinutes(s.endTime) >= mins) ?? null;
@@ -143,6 +161,13 @@ export default function HeroSection({ allSchedules, initialTime, initialDow, ini
     }, [schedules]);
 
     const [currentSchedule, setCurrentSchedule] = useState<Schedule | null>(() => allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null);
+
+    // Sync status and schedule from props when server data changes (after router.refresh)
+    useEffect(() => {
+        setStatus(initialStatus);
+        const sched = allSchedules.find(s => s.id === initialCurrentScheduleId) ?? null;
+        setCurrentSchedule(sched);
+    }, [initialStatus, initialCurrentScheduleId, allSchedules]);
 
     useEffect(() => {
         const tick = () => {

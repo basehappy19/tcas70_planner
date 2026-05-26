@@ -56,6 +56,7 @@ const TYPE_COLORS: Record<string, { dot: string; bg: string; text: string; borde
 };
 
 const ACTION_LABELS: Record<string, string> = {
+    START_EARLY:   "เริ่มก่อนเวลา",
     START_ON_TIME: "เริ่มตรงเวลา",
     START_LATE:    "เริ่มช้า",
     PAUSE:         "พักเบรก",
@@ -66,6 +67,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ACTION_COLORS: Record<string, string> = {
+    START_EARLY:   "text-blue-600 bg-blue-50 border-blue-200",
     START_ON_TIME: "text-emerald-600 bg-emerald-50 border-emerald-200",
     START_LATE:    "text-amber-600 bg-amber-50 border-amber-200",
     PAUSE:         "text-amber-600 bg-amber-50 border-amber-200",

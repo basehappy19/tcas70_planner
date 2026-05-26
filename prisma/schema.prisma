@@ -30,6 +30,7 @@ model StudyLog {
 }
 
 enum StudyActionType {
+  START_EARLY
   START_ON_TIME
   START_LATE
   PAUSE
