@@ -204,6 +204,6 @@ export async function getDashboardStats() {
         };
     } catch (e) {
         console.error("Error fetching stats:", e);
-        return { success: false, stats: { totalDays: 0, totalHours: 0, totalSessions: 0, daysToExam: 0 } };
+        return { success: false, stats: { totalDays: 0, totalHours: "0", totalSessions: 0, daysToExam: 0 } };
     }
 }
