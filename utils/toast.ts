@@ -18,5 +18,12 @@ export const toast = {
         } catch (e) {
             console.error('TOAST ERROR:', msg)
         }
+    },
+    loading: (msg: string) => {
+        try {
+            return sonnerToast.loading(msg)
+        } catch (e) {
+            console.log('TOAST LOADING:', msg)
+        }
     }
 }

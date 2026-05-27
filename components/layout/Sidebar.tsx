@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const menuItems = [
     { name: "หน้าหลัก",       path: "/" },
+    { name: "ประวัติการเรียน", path: "/history" },
     { name: "ตารางติว",       path: "/schedules" },
     { name: "เรียนนอกตาราง", path: "/free-study" },
     { name: "ห้องติว",        path: "/resources" },
@@ -20,6 +21,13 @@ const IconHome = () => (
     </svg>
 );
 
+const IconHistory = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 8v4l3 3" />
+        <path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5" />
+    </svg>
+);
+
 const IconCalendar = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -27,7 +35,6 @@ const IconCalendar = () => (
     </svg>
 );
 
-// ไอคอน "เรียนนอกตาราง" — นาฬิกาจับเวลา
 const IconFreeStudy = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="13" r="8" />
@@ -51,35 +58,23 @@ const IconClock = () => (
     </svg>
 );
 
-const ICONS = [IconHome, IconCalendar, IconFreeStudy, IconBook, IconClock];
+const ICONS = [IconHome, IconHistory, IconCalendar, IconFreeStudy, IconBook, IconClock];
 
-// active accent per route — index matches menuItems order
 const ACTIVE_STYLES = [
-    // หน้าหลัก — emerald
     { icon: "bg-emerald-100 text-emerald-600", link: "text-emerald-600 shadow-[0_6px_20px_rgba(16,185,129,0.12)] border-emerald-100", glow: "from-emerald-50", mobile: "bg-emerald-100 text-emerald-600 shadow-[0_4px_14px_rgba(16,185,129,0.18)]", mobileText: "text-emerald-600" },
-    // ตารางติว — emerald
+    { icon: "bg-amber-100 text-amber-600", link: "text-amber-600 shadow-[0_6px_20px_rgba(245,158,11,0.12)] border-amber-100", glow: "from-amber-50", mobile: "bg-amber-100 text-amber-600 shadow-[0_4px_14px_rgba(245,158,11,0.18)]", mobileText: "text-amber-600" },
     { icon: "bg-emerald-100 text-emerald-600", link: "text-emerald-600 shadow-[0_6px_20px_rgba(16,185,129,0.12)] border-emerald-100", glow: "from-emerald-50", mobile: "bg-emerald-100 text-emerald-600 shadow-[0_4px_14px_rgba(16,185,129,0.18)]", mobileText: "text-emerald-600" },
-    // เรียนนอกตาราง — violet
     { icon: "bg-violet-100 text-violet-600", link: "text-violet-600 shadow-[0_6px_20px_rgba(139,92,246,0.12)] border-violet-100", glow: "from-violet-50", mobile: "bg-violet-100 text-violet-600 shadow-[0_4px_14px_rgba(139,92,246,0.18)]", mobileText: "text-violet-600" },
-    // ห้องติว — blue
     { icon: "bg-blue-100 text-blue-600", link: "text-blue-600 shadow-[0_6px_20px_rgba(59,130,246,0.12)] border-blue-100", glow: "from-blue-50", mobile: "bg-blue-100 text-blue-600 shadow-[0_4px_14px_rgba(59,130,246,0.18)]", mobileText: "text-blue-600" },
-    // ลองสอบ — orange
     { icon: "bg-orange-100 text-orange-600", link: "text-orange-600 shadow-[0_6px_20px_rgba(249,115,22,0.12)] border-orange-100", glow: "from-orange-50", mobile: "bg-orange-100 text-orange-600 shadow-[0_4px_14px_rgba(249,115,22,0.18)]", mobileText: "text-orange-600" },
 ];
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
     const pathname = usePathname();
 
     return (
         <>
-            {/* ════════════════════════════════════════════
-                Desktop Sidebar
-            ════════════════════════════════════════════ */}
             <aside className="hidden md:flex flex-col w-64 shrink-0 min-h-screen sticky top-0 bg-[#FCFCF8] border-r border-stone-200/70">
-
-                {/* Brand */}
                 <div className="px-6 pt-7 pb-6">
                     <div className="rounded-3xl border border-emerald-100 bg-white/80 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] p-4">
                         <div className="flex items-center gap-3">
@@ -96,7 +91,6 @@ export default function Sidebar() {
                     </div>
                 </div>
 
-                {/* Navigation */}
                 <nav className="flex-1 px-4 space-y-1.5">
                     {menuItems.map((item, i) => {
                         const Icon = ICONS[i];
@@ -130,12 +124,8 @@ export default function Sidebar() {
                         );
                     })}
                 </nav>
-
             </aside>
 
-            {/* ════════════════════════════════════════════
-                Mobile Topbar
-            ════════════════════════════════════════════ */}
             <div className="md:hidden sticky top-0 z-40 border-b border-stone-200/70 bg-[#FCFCF8]/90 backdrop-blur-xl">
                 <div className="flex items-center justify-between px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -152,11 +142,8 @@ export default function Sidebar() {
                 </div>
             </div>
 
-            {/* ════════════════════════════════════════════
-                Mobile Bottom Nav — 5 items
-            ════════════════════════════════════════════ */}
             <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-stone-200 bg-white/90 backdrop-blur-xl">
-                <div className="grid grid-cols-5 px-1 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <div className="grid grid-cols-6 px-1 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                     {menuItems.map((item, i) => {
                         const Icon = ICONS[i];
                         const isActive = pathname === item.path;
@@ -176,8 +163,7 @@ export default function Sidebar() {
                                 <span className={`mt-0.5 text-[9px] font-bold transition-colors leading-tight text-center ${
                                     isActive ? ac.mobileText : "text-stone-400"
                                 }`}>
-                                    {/* ย่อชื่อให้พอดี mobile */}
-                                    {item.name === "เรียนนอกตาราง" ? "นอกตาราง" : item.name}
+                                    {item.name === "เรียนนอกตาราง" ? "นอกตาราง" : item.name === "ประวัติการเรียน" ? "ประวัติ" : item.name}
                                 </span>
                             </Link>
                         );

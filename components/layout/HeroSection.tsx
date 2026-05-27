@@ -29,6 +29,12 @@ type Props = {
     initialCanEnd: boolean;
     initialStatus: "IDLE" | "STUDYING" | "PAUSED";
     completedScheduleIds: number[];
+    stats: {
+        totalDays: number;
+        totalHours: string;
+        totalSessions: number;
+        daysToExam: number;
+    };
 };
 
 type NoteImageData = {
@@ -85,7 +91,7 @@ function CountdownRing({ secondsRemaining, totalSeconds, isOver, isPaused }: { s
     );
 }
 
-export default function HeroSection({ allSchedules, initialTime, initialDow, initialMinutes, initialCurrentScheduleId, initialCanEnd, initialStatus, completedScheduleIds }: Props) {
+export default function HeroSection({ allSchedules, initialTime, initialDow, initialMinutes, initialCurrentScheduleId, initialCanEnd, initialStatus, completedScheduleIds, stats }: Props) {
     const router = useRouter();
     const [currentTime, setCurrentTime] = useState("");
     const [currentDate, setCurrentDate] = useState("");
@@ -275,6 +281,38 @@ export default function HeroSection({ allSchedules, initialTime, initialDow, ini
                         <p className="text-sm text-stone-400 mt-2 font-medium">{currentDate ? `${DAY_FULL_TH[nowDow]}ที่ ${currentDate}` : ""}</p>
                     </div>
                     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mt-1 ${sc.pill}`}><span className={`w-2 h-2 rounded-full ${sc.dot} ${status !== "IDLE" ? "animate-pulse" : ""}`} />{sc.label}</div>
+                </div>
+
+                {/* Statistics Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="bg-white p-4 rounded-3xl border border-stone-100 shadow-sm">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">เรียนไปแล้ว</p>
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-2xl font-black text-stone-800">{stats.totalDays}</span>
+                            <span className="text-xs font-bold text-stone-400">วัน</span>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4 rounded-3xl border border-stone-100 shadow-sm">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">รวมเวลา</p>
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-2xl font-black text-stone-800">{stats.totalHours}</span>
+                            <span className="text-xs font-bold text-stone-400">ชม.</span>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4 rounded-3xl border border-stone-100 shadow-sm">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">จำนวนคาบ</p>
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-2xl font-black text-stone-800">{stats.totalSessions}</span>
+                            <span className="text-xs font-bold text-stone-400">คาบ</span>
+                        </div>
+                    </div>
+                    <div className="bg-linear-to-br from-indigo-500 to-violet-600 p-4 rounded-3xl shadow-lg shadow-indigo-200">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-100 mb-1">นับถอยหลังสอบ</p>
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-2xl font-black text-white">{stats.daysToExam}</span>
+                            <span className="text-xs font-bold text-indigo-100">วัน</span>
+                        </div>
+                    </div>
                 </div>
 
                 {currentSchedule ? (

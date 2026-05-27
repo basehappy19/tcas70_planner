@@ -6,6 +6,7 @@ import prisma from "@/lib/prisma";
 import dayjs from "@/lib/dayjs";
 import HeroSection from "@/components/layout/HeroSection";
 import { getCurrentSessionState } from "@/features/study/services/study";
+import { getDashboardStats } from "@/features/study/services/history";
 
 const EARLY_START_MINUTES = 5;
 
@@ -41,13 +42,14 @@ export default async function Page() {
     noStore();
     const now = dayjs();
 
-    const [allSchedules, initialStatus, activeLog, completedScheduleIds] = await Promise.all([
+    const [allSchedules, initialStatus, activeLog, completedScheduleIds, statsRes] = await Promise.all([
         prisma.schedule.findMany({
             orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
         }),
         getCurrentSessionState(),
         getActiveStudyLog(),
         getCompletedScheduleIdsToday(),
+        getDashboardStats(),
     ]);
 
     const initialDow = now.day();
@@ -80,6 +82,7 @@ export default async function Page() {
                 initialCanEnd={initialCanEnd}
                 initialStatus={initialStatus}
                 completedScheduleIds={completedScheduleIds}
+                stats={statsRes.stats}
             />
         </main>
     );
