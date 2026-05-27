@@ -2,28 +2,34 @@
 
 import { toast as sonnerToast } from 'sonner'
 
-// Stub in case sonner is not available or failing to load
 export const toast = {
-    success: (msg: string) => {
+    success: (msg: string, options?: any) => {
         try {
-            sonnerToast.success(msg)
+            sonnerToast.success(msg, options)
         } catch (e) {
             console.log('TOAST SUCCESS:', msg)
-            // Fallback to alert or custom UI if needed
         }
     },
-    error: (msg: string) => {
+    error: (msg: string, options?: any) => {
         try {
-            sonnerToast.error(msg)
+            sonnerToast.error(msg, options)
         } catch (e) {
             console.error('TOAST ERROR:', msg)
         }
     },
-    loading: (msg: string) => {
+    loading: (msg: string, options?: any) => {
         try {
-            return sonnerToast.loading(msg)
+            return sonnerToast.loading(msg, options)
         } catch (e) {
             console.log('TOAST LOADING:', msg)
+            return null
+        }
+    },
+    dismiss: (id?: string | number) => {
+        try {
+            sonnerToast.dismiss(id)
+        } catch (e) {
+            console.log('TOAST DISMISS')
         }
     }
 }

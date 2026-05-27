@@ -72,9 +72,7 @@ export default function HistoryClient({ initialHistory }: { initialHistory: any[
         const toastId = toast.loading("กำลังให้ AI สรุปบทเรียน...");
         try {
             const res = await generateAISummary(id, type);
-            // Dismiss loading toast manually if the library doesn't handle auto-dismiss on success/error
-            // (Standard sonner toast.loading returns an ID that can be used for dismissal or replacement)
-            // But since our stub/wrapper might vary, I'll use success/error to notify.
+            toast.dismiss(toastId);
             if (res.success) {
                 toast.success("AI สรุปเรียบร้อยแล้ว");
                 router.refresh();
@@ -82,6 +80,7 @@ export default function HistoryClient({ initialHistory }: { initialHistory: any[
                 toast.error("เกิดข้อผิดพลาดในการสรุป");
             }
         } catch (e) {
+            toast.dismiss(toastId);
             toast.error("เกิดข้อผิดพลาดในการเชื่อมต่อ");
         }
     };
@@ -250,7 +249,7 @@ export default function HistoryClient({ initialHistory }: { initialHistory: any[
                                                                 </div>
                                                                 <button 
                                                                     onClick={() => handleGenerateAI(item.id, item.type)}
-                                                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1.5"
+                                                                    className="cursor-pointer text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1.5"
                                                                 >
                                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                                                         <path d="M21 2v6h-6" />
