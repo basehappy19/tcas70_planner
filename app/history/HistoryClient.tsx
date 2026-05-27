@@ -146,7 +146,7 @@ export default function HistoryClient({ initialHistory }: { initialHistory: any[
                                     </div>
                                     <div className="flex-1 h-0.5 bg-stone-100" />
                                     <div className="text-xs font-bold text-stone-300 uppercase tracking-widest">
-                                        {items.length} SESSIONS
+                                        {items.length} คาบ
                                     </div>
                                 </div>
 
@@ -190,12 +190,12 @@ export default function HistoryClient({ initialHistory }: { initialHistory: any[
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-0.5">
                                                             <span className="text-stone-400 text-[10px] font-black uppercase tracking-wider">
-                                                                {item.startTime ? formatTime12(item.startTime) : 'No time'}
+                                                                {item.startTime ? formatTime12(item.startTime) : 'ไม่ระบุเวลา'}
                                                             </span>
                                                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${
                                                                 item.type === 'SCHEDULED' ? "bg-emerald-50 text-emerald-600" : "bg-violet-50 text-violet-600"
                                                             }`}>
-                                                                {item.type === 'SCHEDULED' ? 'Scheduled' : 'Free Session'}
+                                                                {item.type === 'SCHEDULED' ? 'ในตาราง' : 'นอกตาราง'}
                                                             </span>
                                                         </div>
                                                         <h3 className="text-lg font-black text-stone-800 truncate leading-tight">
