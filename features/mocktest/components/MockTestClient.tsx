@@ -16,6 +16,7 @@ import {
     deleteTestHistory,
 } from "@/features/mocktest/services/mocktest";
 import { uploadImageToDrive } from "@/features/drive/services/drive";
+import { toast } from "@/utils/toast";
 import Image from "next/image";
 import { Subject, ActionImage, ActionLog, LocalImage } from "@/types";
 
@@ -228,7 +229,12 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         const t = inputHours * 3600 + inputMinutes * 60;
         if (!selectedSubject || t <= 0) return;
         setTotalTime(t); setTimeSpent(0); setForcedScoring(false); setPhase("running");
-        await startMockTest({ subjectId: Number(selectedSubject), timeLimitMinutes: inputHours * 60 + inputMinutes });
+        const res = await startMockTest({ subjectId: Number(selectedSubject), timeLimitMinutes: inputHours * 60 + inputMinutes });
+        if (res.success) {
+            toast.success("เริ่มการลองสอบแล้ว");
+        } else {
+            toast.error("ไม่สามารถเริ่มการสอบได้");
+        }
     };
 
     const handleTogglePause = async () => {
@@ -244,6 +250,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         setPhase("setup"); setSelectedSubject(""); setScore(""); setNotes("");
         setTimeSpent(0); setTotalTime(0); setForcedScoring(false);
         await cancelMockTest();
+        toast.success("ยกเลิกการลองสอบแล้ว");
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -256,7 +263,10 @@ export default function MockTestClient({ subjects, history, stats, initialActive
             if (res.success) {
                 setPhase("setup"); setSelectedSubject(""); setScore(""); setNotes("");
                 setTimeSpent(0); setTotalTime(0); setForcedScoring(false);
-            } else { alert((res as { success: false; message?: string }).message ?? "บันทึกไม่สำเร็จ"); }
+                toast.success("บันทึกผลสอบเรียบร้อยแล้ว");
+            } else { 
+                toast.error((res as { success: false; message?: string }).message ?? "บันทึกไม่สำเร็จ");
+            }
         } finally { setIsSubmitting(false); }
     };
 
@@ -310,7 +320,8 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                 note: quickNote.trim() || undefined,
                 images: [...alreadyDone, ...uploadedImages].length > 0 ? [...alreadyDone, ...uploadedImages] : undefined,
             });
-            if (!noteRes.success) { alert("บันทึกโน้ตไม่สำเร็จ"); return; }
+            if (!noteRes.success) { toast.error("บันทึกโน้ตไม่สำเร็จ"); return; }
+            toast.success("บันทึกโน้ตเรียบร้อยแล้ว");
             localImages.forEach(img => URL.revokeObjectURL(img.preview));
             setQuickNote(""); setLocalImages([]); setShowNotes(false);
         } finally { setIsSavingNote(false); }
@@ -329,7 +340,11 @@ export default function MockTestClient({ subjects, history, stats, initialActive
         setDeletingId(id);
         try {
             const res = await deleteTestHistory(id);
-            if (!res.success) alert("ลบไม่สำเร็จ");
+            if (res.success) {
+                toast.success("ลบประวัติการสอบแล้ว");
+            } else {
+                toast.error("ลบไม่สำเร็จ");
+            }
         } finally { setDeletingId(null); setConfirmDeleteId(null); }
     };
 
@@ -585,7 +600,7 @@ export default function MockTestClient({ subjects, history, stats, initialActive
                                                     ) : (
                                                         <button onClick={() => setConfirmDeleteId(item.id)} className="cursor-pointer w-7 h-7 rounded-xl bg-stone-100 border border-stone-200 text-stone-400 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-all flex items-center justify-center" title="ลบประวัตินี้">
                                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                                                                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                                                                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
                                                             </svg>
                                                         </button>
                                                     )}

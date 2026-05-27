@@ -12,6 +12,7 @@ import {
     endFreeStudy,
 } from "@/features/free-study/services/freeStudy";
 import { uploadImageToDrive } from "@/features/drive/services/drive";
+import { toast } from "@/utils/toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,9 @@ export default function FreeStudySection({ initialSession }: Props) {
             setSession({ id: res.id, title: titleInput.trim(), status: "IN_PROGRESS", startedAt: new Date().toISOString() });
             setStatus("IN_PROGRESS");
             setElapsedSeconds(0);
+            toast.success("เริ่มการเรียนนอกตารางแล้ว");
+        } else {
+            toast.error("ไม่สามารถเริ่มการเรียนได้");
         }
         setIsStarting(false);
     };
@@ -154,7 +158,12 @@ export default function FreeStudySection({ initialSession }: Props) {
 
     const handleEnd = async () => {
         setIsEnding(true);
-        await endFreeStudy();
+        const res = await endFreeStudy();
+        if (res.success) {
+            toast.success("บันทึกการเรียนนอกตารางเรียบร้อยแล้ว");
+        } else {
+            toast.error("เกิดข้อผิดพลาดในการบันทึก");
+        }
         stopTimer();
         setIsEnding(false);
         setShowEndConfirm(false);
@@ -212,7 +221,12 @@ export default function FreeStudySection({ initialSession }: Props) {
             }));
             uploadedImages = results.filter((r): r is { url: string; caption: string } => r !== null);
         }
-        await addFreeStudyNote(noteText, uploadedImages);
+        const res = await addFreeStudyNote(noteText, uploadedImages);
+        if (res.success) {
+            toast.success("บันทึกโน้ตเรียบร้อยแล้ว");
+        } else {
+            toast.error("ไม่สามารถบันทึกโน้ตได้");
+        }
         setIsUploading(false);
         resetNoteModal();
     };

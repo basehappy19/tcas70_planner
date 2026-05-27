@@ -24,16 +24,30 @@ async function getActiveStudyLog() {
     });
 }
 
+async function getCompletedScheduleIdsToday() {
+    const now = dayjs();
+    const startOfDay = now.startOf('day').toDate();
+    const logs = await prisma.studyLog.findMany({
+        where: {
+            status: "COMPLETED",
+            date: { gte: startOfDay },
+        },
+        select: { scheduleId: true },
+    });
+    return logs.map(l => l.scheduleId);
+}
+
 export default async function Page() {
     noStore();
     const now = dayjs();
 
-    const [allSchedules, initialStatus, activeLog] = await Promise.all([
+    const [allSchedules, initialStatus, activeLog, completedScheduleIds] = await Promise.all([
         prisma.schedule.findMany({
             orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
         }),
         getCurrentSessionState(),
         getActiveStudyLog(),
+        getCompletedScheduleIdsToday(),
     ]);
 
     const initialDow = now.day();
@@ -46,7 +60,8 @@ export default async function Page() {
         initialCurrentSchedule = allSchedules.find(s =>
             s.dayOfWeek === initialDow &&
             timeToMinutes(s.startTime) - EARLY_START_MINUTES <= initialMinutes &&
-            timeToMinutes(s.endTime) >= initialMinutes
+            timeToMinutes(s.endTime) >= initialMinutes &&
+            !completedScheduleIds.includes(s.id)
         ) ?? null;
     }
 
@@ -64,6 +79,7 @@ export default async function Page() {
                 initialCurrentScheduleId={initialCurrentSchedule?.id ?? null}
                 initialCanEnd={initialCanEnd}
                 initialStatus={initialStatus}
+                completedScheduleIds={completedScheduleIds}
             />
         </main>
     );

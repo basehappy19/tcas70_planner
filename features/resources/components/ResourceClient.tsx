@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { addResource, deleteResource } from '@/features/resources/services/resource'
+import { toast } from '@/utils/toast'
 import Image from 'next/image'
 
 interface Subject {
@@ -117,6 +119,7 @@ export default function ResourceClient({
     subjects: Subject[]
     resources: Resource[]
 }) {
+    const router = useRouter()
     const [filterSubject, setFilterSubject] = useState<string>('all')
     const [filterType, setFilterType] = useState<string>('all')
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -124,6 +127,14 @@ export default function ResourceClient({
     const [form, setForm] = useState({ subjectId: '', title: '', type: '', url: '', content: '' })
     const [errors, setErrors] = useState({ subjectId: false, title: false, type: false })
     const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
+
+    // Auto-update polling
+    useEffect(() => {
+        const interval = setInterval(() => {
+            router.refresh()
+        }, 10000) // Poll every 10 seconds
+        return () => clearInterval(interval)
+    }, [router])
 
     const openModal = () => {
         setIsModalOpen(true)
@@ -153,7 +164,12 @@ export default function ResourceClient({
     })
 
     const handleDelete = async (id: number) => {
-        await deleteResource(id)
+        const res = await deleteResource(id)
+        if (res.success) {
+            toast.success('ลบแหล่งข้อมูลเรียบร้อยแล้ว')
+        } else {
+            toast.error('ไม่สามารถลบข้อมูลได้')
+        }
         setConfirmDeleteId(null)
     }
 
@@ -342,10 +358,15 @@ export default function ResourceClient({
                         <form
                             action={async (formData) => {
                                 if (!validateForm()) return
-                                await addResource(formData)
-                                setForm({ subjectId: '', title: '', type: '', url: '', content: '' })
-                                setErrors({ subjectId: false, title: false, type: false })
-                                closeModal()
+                                const res = await addResource(formData)
+                                if (res.success) {
+                                    toast.success('เพิ่มแหล่งข้อมูลเรียบร้อยแล้ว')
+                                    setForm({ subjectId: '', title: '', type: '', url: '', content: '' })
+                                    setErrors({ subjectId: false, title: false, type: false })
+                                    closeModal()
+                                } else {
+                                    toast.error('ไม่สามารถเพิ่มข้อมูลได้')
+                                }
                             }}
                         >
                             {/* Body */}

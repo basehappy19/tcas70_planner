@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "TCAS 70 Planner",
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-[#FAFAF7] text-white font-sans antialiased flex flex-col md:flex-row min-h-screen">
+        <Toaster position="top-center" richColors />
         <Sidebar />
 
         <main className="flex-1 overflow-y-auto pb-24 md:pb-0">

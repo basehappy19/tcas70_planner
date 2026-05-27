@@ -5,6 +5,7 @@ import dayjs from "@/lib/dayjs";
 import { formatTime12, formatDateThai, formatDuration, getGoogleDriveImageUrl } from "@/utils/format";
 import { addActionLogToDB, createStudySession, finishStudySession, getLatestSchedules, getCurrentSessionState } from "@/features/study/services/study";
 import { uploadImageToDrive } from "@/features/drive/services/drive";
+import { toast } from "@/utils/toast";
 import Image from "next/image";
 import { LocalImage, Status } from "@/types";
 
@@ -27,6 +28,7 @@ type Props = {
     initialCurrentScheduleId: number | null;
     initialCanEnd: boolean;
     initialStatus: "IDLE" | "STUDYING" | "PAUSED";
+    completedScheduleIds: number[];
 };
 
 type NoteImageData = {
@@ -83,7 +85,7 @@ function CountdownRing({ secondsRemaining, totalSeconds, isOver, isPaused }: { s
     );
 }
 
-export default function HeroSection({ allSchedules, initialTime, initialDow, initialMinutes, initialCurrentScheduleId, initialCanEnd, initialStatus }: Props) {
+export default function HeroSection({ allSchedules, initialTime, initialDow, initialMinutes, initialCurrentScheduleId, initialCanEnd, initialStatus, completedScheduleIds }: Props) {
     const router = useRouter();
     const [currentTime, setCurrentTime] = useState("");
     const [currentDate, setCurrentDate] = useState("");
@@ -135,8 +137,13 @@ export default function HeroSection({ allSchedules, initialTime, initialDow, ini
     }, [status]);
 
     const getCurrentSchedule = useCallback((dow: number, mins: number, earlyAllowed = false) => {
-        return schedules.find(s => s.dayOfWeek === dow && (earlyAllowed ? timeToMinutes(s.startTime) - EARLY_START_MINUTES <= mins : timeToMinutes(s.startTime) <= mins) && timeToMinutes(s.endTime) >= mins) ?? null;
-    }, [schedules]);
+        return schedules.find(s => 
+            s.dayOfWeek === dow && 
+            (earlyAllowed ? timeToMinutes(s.startTime) - EARLY_START_MINUTES <= mins : timeToMinutes(s.startTime) <= mins) && 
+            timeToMinutes(s.endTime) >= mins &&
+            !completedScheduleIds.includes(s.id)
+        ) ?? null;
+    }, [schedules, completedScheduleIds]);
 
     const getPrevSchedule = useCallback((dow: number, mins: number) => {
         const todayPrev = schedules.filter(s => s.dayOfWeek === dow && timeToMinutes(s.endTime) < mins).sort((a, b) => timeToMinutes(b.endTime) - timeToMinutes(a.endTime))[0];
@@ -215,7 +222,13 @@ export default function HeroSection({ allSchedules, initialTime, initialDow, ini
     const handleStartStudy = async () => {
         if (!currentSchedule?.id) return;
         const res = await createStudySession({ scheduleId: currentSchedule.id });
-        if (res.success) { setStatus("STUDYING"); router.refresh(); }
+        if (res.success) {
+            setStatus("STUDYING");
+            router.refresh();
+            toast.success("เริ่มชั่วโมงการเรียนแล้ว");
+        } else {
+            toast.error(res.message || "ไม่สามารถเริ่มเซสชันได้");
+        }
     };
 
     const handleEndSession = async () => {
@@ -229,7 +242,10 @@ export default function HeroSection({ allSchedules, initialTime, initialDow, ini
             const now = dayjs(), dow = now.day(), mins = timeToMinutes(now.format("HH:mm"));
             setNowDow(dow); setNowMinutes(mins);
             setCurrentSchedule(getCurrentSchedule(dow, mins, true));
+            toast.success("บันทึกชั่วโมงการเรียนเรียบร้อยแล้ว");
             router.refresh();
+        } else {
+            toast.error("เกิดข้อผิดพลาดในการบันทึก");
         }
     };
 
@@ -247,6 +263,7 @@ export default function HeroSection({ allSchedules, initialTime, initialDow, ini
     const isInEarlyWindow = currentSchedule ? nowMinutes < timeToMinutes(currentSchedule.startTime) : false;
 
     const sc = { IDLE: { label: "ว่าง", dot: "bg-stone-400", pill: "bg-stone-100 text-stone-500 border-stone-200" }, STUDYING: { label: "กำลังเรียน", dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700 border-emerald-200" }, PAUSED: { label: "พักเบรก", dot: "bg-orange-400", pill: "bg-orange-50 text-orange-600 border-orange-200" } }[status];
+    const isCompleted = currentSchedule ? completedScheduleIds.includes(currentSchedule.id) : false;
 
     return (
         <div className="min-h-screen bg-[#FAFAF7] text-stone-800 px-4 py-8 font-sans">
@@ -278,21 +295,21 @@ export default function HeroSection({ allSchedules, initialTime, initialDow, ini
                                 </div>
                             )}
 
-                            {status === "IDLE" && currentSchedule.type === "ติว" && canStartSession ? (
+                            {status === "IDLE" && currentSchedule.type === "ติว" && canStartSession && !isCompleted ? (
                                 <button onClick={handleStartStudy} className="cursor-pointer w-full bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-white font-black py-3.5 rounded-2xl text-base transition-all shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.4)]">{isInEarlyWindow ? `เริ่มก่อนกำหนด (${timeToMinutes(currentSchedule.startTime) - nowMinutes} น.) →` : "เริ่มติวเลย →"}</button>
                             ) : (
                                 <div className="space-y-3">
                                     <div className={`flex justify-between items-center px-4 py-3 rounded-2xl border text-sm ${status === "STUDYING" ? "border-emerald-200 bg-emerald-50" : status === "PAUSED" ? "border-orange-200 bg-orange-50" : "border-stone-200 bg-stone-50"}`}>
                                         <div className="flex items-center gap-2.5">
                                             {status !== "IDLE" && <span className="relative flex h-2.5 w-2.5"><span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-50 ${status === "STUDYING" ? "bg-emerald-400" : "bg-orange-400"}`} /><span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${status === "STUDYING" ? "bg-emerald-500" : "bg-orange-400"}`} /></span>}
-                                            <span className={`font-semibold text-sm ${status === "IDLE" ? "text-stone-500" : status === "STUDYING" ? "text-emerald-700" : "text-orange-600"}`}>{status === "IDLE" ? `คาบ${currentSchedule.type}` : status === "STUDYING" ? "กำลังเรียนอยู่" : "พักเบรก"}</span>
+                                            <span className={`font-semibold text-sm ${status === "IDLE" ? "text-stone-500" : status === "STUDYING" ? "text-emerald-700" : "text-orange-600"}`}>{status === "IDLE" ? isCompleted ? "เรียนจบแล้วสำหรับวันนี้" : `คาบ${currentSchedule.type}` : status === "STUDYING" ? "กำลังเรียนอยู่" : "พักเบรก"}</span>
                                         </div>
                                         <div className="flex gap-2">
                                             <button onClick={() => { setShowNoteModal(true); requestAnimationFrame(() => setNoteModalVisible(true)); }} className="cursor-pointer px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors border border-blue-200">จดโน้ต</button>
                                             {status !== "IDLE" && <button onClick={() => { const next = status === "STUDYING" ? "PAUSED" : "STUDYING"; setStatus(next); addActionLogToDB(next === "STUDYING" ? "RESUME" : "PAUSE"); }} className="cursor-pointer px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-100 text-stone-600 hover:bg-stone-200 transition-colors border border-stone-200">{status === "STUDYING" ? "พัก" : "เรียนต่อ"}</button>}
                                         </div>
                                     </div>
-                                    <button onClick={handleEndSession} disabled={!canEndSession || isSaving} className={`w-full py-3 rounded-2xl text-sm font-bold transition-all border ${canEndSession && !isSaving ? "cursor-pointer border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white hover:border-rose-500 hover:shadow-[0_4px_16px_rgba(244,63,94,0.25)]" : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-300"}`}>{isSaving ? "กำลังบันทึก..." : canEndSession ? (status === "IDLE" ? "จบคาบ" : "จบชั่วโมงการเรียน") : `ยังไม่ถึงเวลาจบ · ${formatTime12(currentSchedule.endTime)}`}</button>
+                                    <button onClick={handleEndSession} disabled={!canEndSession || isSaving || isCompleted} className={`w-full py-3 rounded-2xl text-sm font-bold transition-all border ${canEndSession && !isSaving && !isCompleted ? "cursor-pointer border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white hover:border-rose-500 hover:shadow-[0_4px_16px_rgba(244,63,94,0.25)]" : "cursor-not-allowed border-stone-200 bg-stone-50 text-stone-300"}`}>{isSaving ? "กำลังบันทึก..." : isCompleted ? "เรียนจบแล้ว" : canEndSession ? (status === "IDLE" ? "จบคาบ" : "จบชั่วโมงการเรียน") : `ยังไม่ถึงเวลาจบ · ${formatTime12(currentSchedule.endTime)}`}</button>
                                 </div>
                             )}
                         </div>
@@ -350,7 +367,7 @@ export default function HeroSection({ allSchedules, initialTime, initialDow, ini
                             {images.length > 0 && <div className="space-y-2.5 max-h-60 overflow-y-auto">{images.map((img, index) => (<div key={index} className="flex gap-3.5 rounded-2xl border border-stone-100 bg-stone-50 p-3"><div className="relative shrink-0"><img src={img.preview} alt="" className="w-20 h-20 rounded-xl object-cover border border-stone-200" /><button type="button" onClick={() => handleRemoveImage(index)} className="cursor-pointer absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 hover:bg-rose-400 text-white text-[10px] font-bold flex items-center justify-center shadow transition-colors">✕</button></div><div className="flex-1 min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">คำอธิบาย</p><textarea value={img.caption} onChange={e => { const u = [...images]; u[index].caption = e.target.value; setImages(u); }} placeholder="เช่น สรุปสูตรหน้า 12..." rows={3} className="w-full bg-transparent text-sm text-stone-700 placeholder:text-stone-300 outline-none resize-none leading-relaxed" /></div></div>))}</div>}
                             {noteError && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3"><p className="text-sm text-rose-500 font-semibold">⚠️ กรุณากรอกข้อความหรือแนบรูปภาพก่อนบันทึก</p></div>}
                         </div>
-                        <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-1"><button type="button" onClick={resetNoteModal} disabled={isUploading} className="cursor-pointer h-12 rounded-2xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-sm font-bold text-stone-500 transition-all disabled:opacity-50">ยกเลิก</button><button onClick={async () => { if (!noteText.trim() && images.length === 0) { setNoteError(true); return; } setIsUploading(true); let uploadedImages: { url: string; caption: string }[] = []; if (images.length > 0) { const results = await Promise.all(images.map(async img => { const fd = new FormData(); fd.append("file", img.file); const res = await uploadImageToDrive(fd); return res.success ? { url: getGoogleDriveImageUrl(res.url), caption: img.caption } : null; })); uploadedImages = results.filter((r): r is { url: string; caption: string } => r !== null); } if (status === "IDLE" && currentSchedule?.id) { await createStudySession({ scheduleId: currentSchedule.id }); setStatus("STUDYING"); } await addActionLogToDB("TAKE_NOTE", noteText, uploadedImages); setIsUploading(false); resetNoteModal(); }} disabled={isUploading} className="cursor-pointer h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-black shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.35)] transition-all active:scale-[0.98] disabled:opacity-50">{isUploading ? `กำลังอัปโหลด ${images.length} รูป...` : "บันทึก"}</button></div>
+                        <div className="grid grid-cols-2 gap-3 px-6 pb-6 pt-1"><button type="button" onClick={resetNoteModal} disabled={isUploading} className="cursor-pointer h-12 rounded-2xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-sm font-bold text-stone-500 transition-all disabled:opacity-50">ยกเลิก</button><button onClick={async () => { if (!noteText.trim() && images.length === 0) { setNoteError(true); return; } setIsUploading(true); let uploadedImages: { url: string; caption: string }[] = []; if (images.length > 0) { const results = await Promise.all(images.map(async img => { const fd = new FormData(); fd.append("file", img.file); const res = await uploadImageToDrive(fd); return res.success ? { url: getGoogleDriveImageUrl(res.url), caption: img.caption } : null; })); uploadedImages = results.filter((r): r is { url: string; caption: string } => r !== null); } if (status === "IDLE" && currentSchedule?.id) { await createStudySession({ scheduleId: currentSchedule.id }); setStatus("STUDYING"); } await addActionLogToDB("TAKE_NOTE", noteText, uploadedImages); setIsUploading(false); toast.success("บันทึกโน้ตเรียบร้อยแล้ว"); resetNoteModal(); }} disabled={isUploading} className="cursor-pointer h-12 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-black shadow-[0_4px_16px_rgba(5,150,105,0.3)] hover:shadow-[0_6px_20px_rgba(5,150,105,0.35)] transition-all active:scale-[0.98] disabled:opacity-50">{isUploading ? `กำลังอัปโหลด ${images.length} รูป...` : "บันทึก"}</button></div>
                     </div>
                 </div>
             )}
