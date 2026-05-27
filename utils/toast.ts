@@ -22,7 +22,7 @@ export const toast = {
             return sonnerToast.loading(msg, options)
         } catch (e) {
             console.log('TOAST LOADING:', msg)
-            return null
+            return undefined
         }
     },
     dismiss: (id?: string | number) => {
