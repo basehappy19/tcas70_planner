@@ -160,9 +160,10 @@ export async function generateAISummary(logId: number, type: 'SCHEDULED' | 'FREE
         let summary = "";
 
         // --- GEMINI AI INTEGRATION ---
-        if (process.env.GEMINI_API_KEY) {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (apiKey) {
             try {
-                const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+                const genAI = new GoogleGenerativeAI(apiKey);
                 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
                 
                 const prompt = `
@@ -185,12 +186,13 @@ ${notes.length > 0 ? notes.map(n => `- ${n}`).join("\n") : "ไม่มีก�
                 summary = result.response.text();
             } catch (aiError) {
                 console.error("Gemini API Error:", aiError);
-                // Fallback to heuristic if API fails
+                summary = "❌ เกิดข้อผิดพลาดในการเรียกใช้ AI (โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตหรือความถูกต้องของ API Key ใน .env)";
             }
         }
 
         // --- Context-Aware Heuristic (Fallback) ---
-        if (!summary) {
+        if (!summary || summary.startsWith("❌")) {
+            const isError = summary.startsWith("❌");
             const combinedNotes = notes.join(" ").toLowerCase();
             const detectedTopics: string[] = [];
             const keywords: Record<string, string[]> = {
@@ -206,22 +208,30 @@ ${notes.length > 0 ? notes.map(n => `- ${n}`).join("\n") : "ไม่มีก�
                 }
             });
 
-            summary = `จากการเรียนวิชา "${title}" ในเซสชันนี้ `;
+            let fallbackSummary = `จากการเรียนวิชา "${title}" ในเซสชันนี้ `;
             
             if (notes.length === 0) {
-                summary += `คุณไม่ได้จดบันทึกไว้ แต่ระบบตรวจพบว่าเป็นการเรียน${type === 'SCHEDULED' ? 'ตามตารางปกติ' : 'นอกตาราง'} ขอแนะนำให้เพิ่มการจดบันทึกเพื่อประสิทธิภาพในการทบทวนครับ\n\n*(หมายเหตุ: เพิ่ม GEMINI_API_KEY ในไฟล์ .env เพื่อปลดล็อก AI ระดับ 999%)*`;
+                fallbackSummary += `คุณไม่ได้จดบันทึกไว้ แต่ระบบตรวจพบว่าเป็นการเรียน${type === 'SCHEDULED' ? 'ตามตารางปกติ' : 'นอกตาราง'} ขอแนะนำให้เพิ่มการจดบันทึกเพื่อประสิทธิภาพในการทบทวนครับ`;
             } else {
-                summary += `พบว่าคุณเน้นไปที่ ${detectedTopics.length > 0 ? detectedTopics.join(" และ ") : "การจดบันทึกรายละเอียดของเนื้อหา"}\n\n`;
-                summary += `💡 สาระสำคัญที่คุณจดไว้:\n${notes.slice(0, 3).map(n => `• ${n}`).join("\n")}\n\n`;
+                fallbackSummary += `พบว่าคุณเน้นไปที่ ${detectedTopics.length > 0 ? detectedTopics.join(" และ ") : "การจดบันทึกรายละเอียดของเนื้อหา"}\n\n`;
+                fallbackSummary += `💡 สาระสำคัญที่คุณจดไว้:\n${notes.slice(0, 3).map(n => `• ${n}`).join("\n")}\n\n`;
                 
                 if (combinedNotes.includes("โจทย์") || combinedNotes.includes("ข้อสอบ")) {
-                    summary += `🎯 ข้อแนะนำ: คุณกำลังเน้นการฝึกทำโจทย์ ควรกลับมาทบทวนข้อที่ทำผิดภายใน 24 ชม. และลองหาโจทย์แนวเดียวกันมาทำซ้ำครับ`;
+                    fallbackSummary += `🎯 ข้อแนะนำ: คุณกำลังเน้นการฝึกทำโจทย์ ควรกลับมาทบทวนข้อที่ทำผิดภายใน 24 ชม. และลองหาโจทย์แนวเดียวกันมาทำซ้ำครับ`;
                 } else if (combinedNotes.includes("จำ") || combinedNotes.includes("สูตร")) {
-                    summary += `🎯 ข้อแนะนำ: มีการใช้เทคนิคการจำหรือจดสูตร แนะนำให้ลองปิดสมุดแล้วเขียนออกมาดูว่ายังจำได้ครบถ้วนหรือไม่ (Active Recall)`;
+                    fallbackSummary += `🎯 ข้อแนะนำ: มีการใช้เทคนิคการจำหรือจดสูตร แนะนำให้ลองปิดสมุดแล้วเขียนออกมาดูว่ายังจำได้ครบถ้วนหรือไม่ (Active Recall)`;
                 } else {
-                    summary += `🎯 ข้อแนะนำ: ลองสรุปเนื้อหาที่เรียนวันนี้ให้เหลือเพียง 3 ประโยคสั้นๆ เพื่อทดสอบว่าคุณเข้าใจแก่นของบทเรียนจริงๆ หรือไม่ครับ`;
+                    fallbackSummary += `🎯 ข้อแนะนำ: ลองสรุปเนื้อหาที่เรียนวันนี้ให้เหลือเพียง 3 ประโยคสั้นๆ เพื่อทดสอบว่าคุณเข้าใจแก่นของบทเรียนจริงๆ หรือไม่ครับ`;
                 }
-                summary += `\n\n*(หมายเหตุ: เพิ่ม GEMINI_API_KEY ในไฟล์ .env เพื่อปลดล็อก AI ระดับ 999%)*`;
+            }
+
+            if (isError) {
+                summary = `${summary}\n\n--- สรุปชั่วคราวโดยระบบ ---\n${fallbackSummary}`;
+            } else {
+                summary = fallbackSummary;
+                if (!apiKey) {
+                    summary += `\n\n*(หมายเหตุ: เพิ่ม GEMINI_API_KEY ในไฟล์ .env เพื่อปลดล็อก AI ระดับ 999%)*`;
+                }
             }
         }
 
