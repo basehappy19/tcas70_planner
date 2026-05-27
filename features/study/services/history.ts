@@ -69,7 +69,15 @@ export async function getStudyHistory(query?: string) {
                 actionLogs: log.actionLogs,
                 schedule: null
             }))
-        ].sort((a, b) => dayjs(b.date).unix() - dayjs(a.date).unix());
+        ].sort((a, b) => {
+            const dateDiff = dayjs(b.date).startOf('day').unix() - dayjs(a.date).startOf('day').unix();
+            if (dateDiff !== 0) return dateDiff;
+            
+            // If same day, sort by startTime descending (newest time first)
+            const timeA = a.startTime ? dayjs(a.startTime).unix() : 0;
+            const timeB = b.startTime ? dayjs(b.startTime).unix() : 0;
+            return timeB - timeA;
+        });
 
         return { success: true, history };
     } catch (e) {

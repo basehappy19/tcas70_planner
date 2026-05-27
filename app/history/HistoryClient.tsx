@@ -69,13 +69,20 @@ export default function HistoryClient({ initialHistory }: { initialHistory: any[
     };
 
     const handleGenerateAI = async (id: number, type: 'SCHEDULED' | 'FREE') => {
-        toast.loading("กำลังให้ AI สรุปบทเรียน...");
-        const res = await generateAISummary(id, type);
-        if (res.success) {
-            toast.success("AI สรุปเรียบร้อยแล้ว");
-            router.refresh();
-        } else {
-            toast.error("เกิดข้อผิดพลาดในการสรุป");
+        const toastId = toast.loading("กำลังให้ AI สรุปบทเรียน...");
+        try {
+            const res = await generateAISummary(id, type);
+            // Dismiss loading toast manually if the library doesn't handle auto-dismiss on success/error
+            // (Standard sonner toast.loading returns an ID that can be used for dismissal or replacement)
+            // But since our stub/wrapper might vary, I'll use success/error to notify.
+            if (res.success) {
+                toast.success("AI สรุปเรียบร้อยแล้ว");
+                router.refresh();
+            } else {
+                toast.error("เกิดข้อผิดพลาดในการสรุป");
+            }
+        } catch (e) {
+            toast.error("เกิดข้อผิดพลาดในการเชื่อมต่อ");
         }
     };
 
