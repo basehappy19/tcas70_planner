@@ -9,6 +9,7 @@ import {
 } from "@/features/study/services/history";
 import { useRouter } from "next/navigation";
 import { toast } from "@/utils/toast";
+import { formatTime12 } from "@/utils/format";
 
 interface HistoryItem {
     id: number;
@@ -243,7 +244,7 @@ export default function HistoryClient({ initialHistory }: { initialHistory: any[
                                                         <div className="flex items-center justify-between mb-2">
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-[10px] font-black text-stone-400">
-                                                                    {dayjs(al.time).format("HH:mm")}
+                                                                    {formatTime12(al.time)}
                                                                 </span>
                                                                 <span className="px-2 py-0.5 rounded-md bg-stone-100 text-[10px] font-black text-stone-600">
                                                                     {al.action}
