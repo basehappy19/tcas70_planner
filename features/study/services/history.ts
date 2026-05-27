@@ -164,7 +164,7 @@ export async function generateAISummary(logId: number, type: 'SCHEDULED' | 'FREE
         if (apiKey) {
             try {
                 const genAI = new GoogleGenerativeAI(apiKey);
-                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
                 
                 const prompt = `
 คุณคือ AI ติวเตอร์ส่วนตัวระดับอัจฉริยะ (999% IQ) หน้าที่ของคุณคือวิเคราะห์ข้อมูลการเรียนและให้คำแนะนำขั้นสุดยอด
